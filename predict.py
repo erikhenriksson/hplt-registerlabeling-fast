@@ -25,7 +25,7 @@ tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
 model.to(device)
 model.eval()
-model = model.to(dtype=torch.bfloat16)  # Cast model to bfloat16 for efficiency
+# model = model.to(dtype=torch.bfloat16)  # Cast model to bfloat16 for efficiency
 
 
 def get_output_filename(input_file):
