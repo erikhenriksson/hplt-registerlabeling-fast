@@ -102,10 +102,24 @@ def process_chunk(chunk):
 def main(input_file):
     output_file = get_output_filename(input_file)
     with open(output_file, "a") as f:  # Use "a" to append to the file
-        for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
-            results = process_chunk(chunk)
-            # Write results to the output file in the original order
-            f.write("\n".join(json.dumps(result) for result in results) + "\n")
+        with tqdm(process_large_file(input_file), desc="Processing Chunks") as pbar:
+            for chunk in pbar:
+                start_time = time.perf_counter()  # Start timer
+
+                results = process_chunk(chunk)
+
+                # Write results to the output file in the original order
+                f.write("\n".join(json.dumps(result) for result in results) + "\n")
+
+                end_time = time.perf_counter()  # End timer
+
+                elapsed_time = end_time - start_time
+                throughput = (
+                    len(chunk) / elapsed_time if elapsed_time > 0 else float("inf")
+                )
+
+                # Update the progress bar with throughput information
+                pbar.set_postfix({"Throughput (items/s)": f"{throughput:.2f}"})
 
 
 if __name__ == "__main__":
