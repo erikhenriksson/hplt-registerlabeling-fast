@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
 BATCH_SIZE = 64
-CHUNK_SIZE = 1000
+CHUNK_SIZE = 3000
 MAX_LENGTH = 512
 NUM_WORKERS = 4  # Adjust based on available CPU cores
 
