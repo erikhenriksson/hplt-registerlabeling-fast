@@ -50,7 +50,7 @@ def process_large_file(input_file):
             yield chunk
 
 
-def process_chunk(chunk, output_file):
+def process_chunk(chunk):
     """Process each chunk, predict labels, and save results in original order."""
     # List to hold results in the original order
     results = []
