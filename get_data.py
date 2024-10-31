@@ -122,22 +122,26 @@ def process_datasets(lang_code):
     for url in urls:
         file_name = os.path.basename(url)
         file_path = os.path.join(lang_folder, file_name)
+        md5_url = url + ".md5"
 
-        # Download the dataset file if not already present
-        if download_file(url, file_path):
-            print(f"Downloaded {file_name}")
+        # Keep retrying until the file is successfully downloaded and verified
+        while True:
+            # Download the dataset file if not already present
+            if not os.path.exists(file_path) or not verify_checksum(file_path, md5_url):
+                print(
+                    f"File {file_name} is missing or has an invalid checksum. Redownloading..."
+                )
+                if not download_file(url, file_path):
+                    print(f"Failed to download {file_name}. Retrying...")
+                    continue  # Retry download if it fails
 
-            # Download and verify checksum
-            md5_url = url + ".md5"
+            # Verify checksum after download or if the file already exists
             if verify_checksum(file_path, md5_url):
                 print(f"Checksum verified for {file_name}")
+                break  # Exit the loop if verification succeeds
 
-                # Shard file and count lines
-                shard_and_count_lines(file_path)
-            else:
-                print(f"Checksum verification failed for {file_name}")
-        else:
-            print(f"Skipping {file_name} due to download failure.")
+        # Shard file and count lines after successful verification
+        shard_and_count_lines(file_path)
 
 
 if __name__ == "__main__":
