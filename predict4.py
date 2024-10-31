@@ -3,7 +3,6 @@ import json
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from torch.utils.data import DataLoader
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
@@ -21,9 +20,9 @@ torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
 tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
 model.to(device)
-# model = torch.compile(
-#    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
-# )
+model = torch.compile(
+    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
+)
 model.eval()
 
 
@@ -51,9 +50,9 @@ def process_large_file(input_file):
             yield chunk
 
 
-def process_chunk(chunk, output_file):
-    """Process each chunk, predict labels, and save results in original order."""
-    # Pre-allocate list for results with original indices
+def process_chunk(chunk):
+    """Process each chunk and return results in the original order."""
+    # Initialize results list for current chunk, sorted by the original indices
     results = [None] * len(chunk)
 
     # Split the sorted chunk into smaller batches based on BATCH_SIZE
@@ -87,19 +86,20 @@ def process_chunk(chunk, output_file):
 
         # Place results in the correct position in the results list
         for batch_idx, (original_idx, prob) in enumerate(zip(original_indices, probs)):
-            # Compute the position within the results list
             local_idx = original_idx - chunk[0]["original_index"]
             results[local_idx] = {"id": ids[batch_idx], "probs": prob}
 
-    # Write results to output file in the original order
-    with open(output_file, "a") as f:
-        f.write("\n".join(json.dumps(result) for result in results if result) + "\n")
+    # Ensure all results are filled before returning
+    return [result for result in results if result]
 
 
 def main(input_file):
     output_file = get_output_filename(input_file)
-    for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
-        process_chunk(chunk, output_file)
+    with open(output_file, "w") as f:
+        for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
+            results = process_chunk(chunk)
+            # Write results to the output file in the original order
+            f.write("\n".join(json.dumps(result) for result in results) + "\n")
 
 
 if __name__ == "__main__":
