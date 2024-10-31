@@ -51,7 +51,7 @@ def process_large_file(input_file):
 
 
 def process_chunk(chunk):
-    results = []
+    results = [None] * len(chunk)  # Pre-allocate list with original order
 
     for i in range(0, len(chunk), BATCH_SIZE):
         batch = chunk[i : i + BATCH_SIZE]
@@ -74,19 +74,17 @@ def process_chunk(chunk):
 
         probs = torch.softmax(logits, dim=-1).cpu().tolist()
 
-        for idx, prob in zip(original_indices, probs):
+        for idx, prob, id in zip(original_indices, probs, ids):
             formatted_probabilities = [round(p, 4) for p in prob]
             labels = [id2label[str(i)] for i in range(len(prob))]
 
-            results.append(
-                {
-                    "id": ids[original_indices.index(idx)],
-                    "registers": labels,
-                    "register_probabilities": formatted_probabilities,
-                }
-            )
+            # Place each result in its original index in results list
+            results[idx] = {
+                "id": id,
+                "registers": labels,
+                "register_probabilities": formatted_probabilities,
+            }
 
-    results.sort(key=lambda x: x["id"])
     return results
 
 
