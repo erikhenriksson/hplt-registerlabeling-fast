@@ -9,8 +9,8 @@ from transformers import AutoConfig
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
-BATCH_SIZE = 128
-CHUNK_SIZE = 2000  # Number of documents per chunk, can be adjusted
+BATCH_SIZE = 64
+CHUNK_SIZE = 1000  # Number of documents per chunk, can be adjusted
 MAX_LENGTH = 512  # Max token length
 
 # Set up model for speed and precision
@@ -80,7 +80,7 @@ def collate_batch(batch):
     """Custom collate function to batch data with similar lengths."""
     max_length = max(item["length"] for item in batch)
 
-    # Pad each tensor in the batch to the max length within the batch
+    # Pad each tensor in the batch to the max length within the batch (CPU side)
     batch_tokens = {
         key: torch.stack(
             [
@@ -91,7 +91,7 @@ def collate_batch(batch):
                 )
                 for item in batch
             ]
-        ).to(device)
+        )
         for key in batch[0]["tokens"]
     }
 
@@ -118,6 +118,11 @@ def process_chunk(chunk, output_file):
 
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for batch_tokens, ids, original_indices in data_loader:
+            # Move each tensor in batch_tokens to the device
+            batch_tokens = {
+                key: tensor.to(device) for key, tensor in batch_tokens.items()
+            }
+
             # Run the model on the batch and get logits
             with torch.no_grad():
                 outputs = model(**batch_tokens)
