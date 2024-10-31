@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
-BATCH_SIZE = 64
-CHUNK_SIZE = 1000
+BATCH_SIZE = 128
+CHUNK_SIZE = 2000
 MAX_LENGTH = 512
 
 # Set up model for speed and precision
