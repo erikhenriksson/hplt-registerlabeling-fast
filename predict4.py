@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
-import time  # Import the time module for timing each chunk
+from io import BufferedWriter
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
@@ -35,40 +35,45 @@ def get_output_filename(input_file):
 
 
 def process_large_file(input_file):
+    """Reads a large file in chunks, pre-sorting each chunk by text length before yielding."""
     with open(input_file, "r") as f:
         chunk = []
         for line in f:
             document = json.loads(line)
             chunk.append(document)
             if len(chunk) >= CHUNK_SIZE:
+                # Sort each chunk by text length before yielding
+                chunk.sort(key=lambda x: len(x["text"]), reverse=True)
                 yield chunk
                 chunk = []
         if chunk:
+            # Sort the last chunk if it has any remaining data
+            chunk.sort(key=lambda x: len(x["text"]), reverse=True)
             yield chunk
 
 
 def tokenize_and_sort(chunk):
-    """Tokenize documents in a chunk, calculate lengths, and sort by length."""
+    """Tokenize documents in a chunk and prepare for batching."""
     texts = [item["text"] for item in chunk]
     ids = [item["id"] for item in chunk]
 
     # Tokenize texts with padding=False, to keep each sequence length unique
     encodings = tokenizer(texts, padding=False, truncation=True, max_length=MAX_LENGTH)
 
-    # Extract the tokenized input ids and attention masks, and calculate lengths
+    # Extract the tokenized input ids and attention masks
     tokenized_data = []
     for i, encoding in enumerate(encodings["input_ids"]):
         tokenized_data.append(
             {
                 "id": ids[i],
                 "tokens": {key: torch.tensor(encodings[key][i]) for key in encodings},
-                "length": len(encoding),  # Calculate sequence length for sorting
+                "length": len(
+                    encoding
+                ),  # Length is already sorted due to sorting in process_large_file
                 "original_index": i,  # Store original index for reordering
             }
         )
 
-    # Sort by length for efficient batching
-    tokenized_data.sort(key=lambda x: x["length"], reverse=True)
     return tokenized_data
 
 
@@ -97,9 +102,8 @@ def collate_batch(batch):
     return batch_tokens, ids, original_indices
 
 
-def process_chunk(chunk, output_file):
+def process_chunk(chunk, buffered_writer):
     """Process each chunk, predict labels, and save results in original order."""
-    start_time = time.time()  # Start timing for the chunk
     sorted_data = tokenize_and_sort(chunk)
 
     # Pre-allocate results list to restore original order
@@ -135,27 +139,12 @@ def process_chunk(chunk, output_file):
                 results[original_index] = {"id": ids[idx], "probs": prob}
 
     # Write results to output file in the original order
-    with open(output_file, "a") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
+    buffered_writer.write("\n".join(json.dumps(result) for result in results) + "\n")
 
-    end_time = time.time()  # End timing for the chunk
-    chunk_duration = end_time - start_time
-    print(f"Chunk processed in {chunk_duration:.2f} seconds.")  # Log the throughput
-    print(f"Throughput: {len(chunk) / chunk_duration:.2f} docs/s")  # Log the throughput
 
 def main(input_file):
     output_file = get_output_filename(input_file)
-    for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
-        process_chunk(chunk, output_file)
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Efficient processing of large datasets."
-    )
-    parser.add_argument("input_file", type=str, help="Path to the input jsonl file.")
-    args = parser.parse_args()
-    main(args.input_file)
+    with open(output_file, "a") as f:
+        buffered_writer = BufferedWriter(f)
+        for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
+            process_chunk(chunk, buffered_writer)
