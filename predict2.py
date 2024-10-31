@@ -20,13 +20,11 @@ torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
 
 # Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
-model = AutoModelForSequenceClassification.from_pretrained(
-    MODEL_DIR, load_in_8bit=True, device_map="auto"
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+model.to(device)
+model = torch.compile(
+    model, mode="max-autotune", fullgraph=True, dynamic=True, backend="inductor"
 )
-# model.to(device)
-# model = torch.compile(
-#    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
-# )
 model.eval()
 
 
