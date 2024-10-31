@@ -96,16 +96,12 @@ def process_chunk(chunk, output_file):
 
     # Sort results by original index to ensure output order matches input order
     results.sort(key=lambda x: x["original_index"])
-
-    # Write results to output file in the correct order
-    with open(output_file, "a") as f:
-        for result in results:
-            f.write(json.dumps({"id": result["id"], "probs": result["probs"]}) + "\n")
+    return [{"id": result["id"], "probs": result["probs"]} for result in results]
 
 
 def main(input_file):
     output_file = get_output_filename(input_file)
-    with open(output_file, "w") as f:
+    with open(output_file, "a") as f:  # Use "a" to append to the file
         for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
             results = process_chunk(chunk)
             # Write results to the output file in the original order
