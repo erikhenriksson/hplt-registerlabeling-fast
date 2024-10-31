@@ -21,9 +21,9 @@ torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
 tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
 model.to(device)
-model = torch.compile(
-    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
-)
+# model = torch.compile(
+#    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
+# )
 model.eval()
 
 
@@ -102,25 +102,38 @@ def process_chunk(chunk):
 
 def main(input_file):
     output_file = get_output_filename(input_file)
-    with open(output_file, "a") as f:  # Use "a" to append to the file
+    total_items = 0
+    total_time = 0.0
+    with open(output_file, "a") as f:
         with tqdm(process_large_file(input_file), desc="Processing Chunks") as pbar:
             for chunk in pbar:
-                start_time = time.perf_counter()  # Start timer
+                start_time = time.perf_counter()
 
                 results = process_chunk(chunk)
 
-                # Write results to the output file in the original order
                 f.write("\n".join(json.dumps(result) for result in results) + "\n")
 
-                end_time = time.perf_counter()  # End timer
+                end_time = time.perf_counter()
 
                 elapsed_time = end_time - start_time
                 throughput = (
                     len(chunk) / elapsed_time if elapsed_time > 0 else float("inf")
                 )
 
+                # Update totals
+                total_items += len(chunk)
+                total_time += elapsed_time
+                average_throughput = (
+                    total_items / total_time if total_time > 0 else float("inf")
+                )
+
                 # Update the progress bar with throughput information
-                pbar.set_postfix({"Throughput (items/s)": f"{throughput:.2f}"})
+                pbar.set_postfix(
+                    {
+                        "Throughput (items/s)": f"{throughput:.2f}",
+                        "Avg Throughput (items/s)": f"{average_throughput:.2f}",
+                    }
+                )
 
 
 if __name__ == "__main__":
