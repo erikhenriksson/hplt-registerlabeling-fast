@@ -24,9 +24,9 @@ model = AutoModelForSequenceClassification.from_pretrained(
     MODEL_DIR, load_in_8bit=True, device_map="auto"
 )
 # model.to(device)
-model = torch.compile(
-    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
-)
+# model = torch.compile(
+#    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
+# )
 model.eval()
 
 
