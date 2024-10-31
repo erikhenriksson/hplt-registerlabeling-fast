@@ -21,6 +21,9 @@ torch.set_float32_matmul_precision("high")
 tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
 model.to(device)
+model = torch.compile(
+    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
+)
 model.eval()
 
 
