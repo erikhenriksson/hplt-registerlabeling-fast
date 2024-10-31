@@ -50,10 +50,10 @@ def process_large_file(input_file):
             yield chunk
 
 
-def process_chunk(chunk):
-    """Process each chunk and return results in the original order."""
-    # Initialize results list for current chunk, sorted by the original indices
-    results = [None] * len(chunk)
+def process_chunk(chunk, output_file):
+    """Process each chunk, predict labels, and save results in original order."""
+    # List to hold results in the original order
+    results = []
 
     # Split the sorted chunk into smaller batches based on BATCH_SIZE
     for i in range(0, len(chunk), BATCH_SIZE):
@@ -64,7 +64,7 @@ def process_chunk(chunk):
         ids = [item["id"] for item in batch]
         original_indices = [item["original_index"] for item in batch]
 
-        # Tokenize with automatic padding
+        # Tokenize with dynamic padding to the longest sequence in the batch
         encodings = tokenizer(
             texts,
             padding="longest",
@@ -84,12 +84,23 @@ def process_chunk(chunk):
         # Convert logits to probabilities
         probs = torch.softmax(logits, dim=-1).cpu().tolist()
 
-        # Place results in the correct position in the results list
-        for batch_idx, (original_idx, prob) in enumerate(zip(original_indices, probs)):
-            local_idx = original_idx - chunk[0]["original_index"]
-            results[local_idx] = {"id": ids[batch_idx], "probs": prob}
+        # Store each result with its original index to maintain order
+        for idx, prob in zip(original_indices, probs):
+            results.append(
+                {
+                    "original_index": idx,
+                    "id": ids[original_indices.index(idx)],
+                    "probs": prob,
+                }
+            )
 
-    return results
+    # Sort results by original index to ensure output order matches input order
+    results.sort(key=lambda x: x["original_index"])
+
+    # Write results to output file in the correct order
+    with open(output_file, "a") as f:
+        for result in results:
+            f.write(json.dumps({"id": result["id"], "probs": result["probs"]}) + "\n")
 
 
 def main(input_file):
