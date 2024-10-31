@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
+import time  # Import the time module for timing each chunk
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
@@ -98,6 +99,7 @@ def collate_batch(batch):
 
 def process_chunk(chunk, output_file):
     """Process each chunk, predict labels, and save results in original order."""
+    start_time = time.time()  # Start timing for the chunk
     sorted_data = tokenize_and_sort(chunk)
 
     # Pre-allocate results list to restore original order
@@ -136,6 +138,10 @@ def process_chunk(chunk, output_file):
     with open(output_file, "a") as f:
         for result in results:
             f.write(json.dumps(result) + "\n")
+
+    end_time = time.time()  # End timing for the chunk
+    chunk_duration = end_time - start_time
+    print(f"Chunk processed in {chunk_duration:.2f} seconds.")  # Log the throughput
 
 
 def main(input_file):
