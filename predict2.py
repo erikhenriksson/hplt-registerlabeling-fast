@@ -16,10 +16,13 @@ MAX_LENGTH = 512
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.set_float32_matmul_precision("high")
+torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
 
 # Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+model = AutoModelForSequenceClassification.from_pretrained(
+    MODEL_DIR, load_in_8bit=True, device_map="auto"
+)
 model.to(device)
 model = torch.compile(
     model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
