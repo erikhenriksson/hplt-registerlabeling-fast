@@ -4,8 +4,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from torch.utils.data import DataLoader, Dataset
-from multiprocessing import Pool
+from torch.utils.data import DataLoader
 from transformers import AutoConfig
 
 # Constants and settings
@@ -68,6 +67,7 @@ def tokenize_and_sort(chunk):
                 "id": ids[i],
                 "tokens": {key: torch.tensor(encodings[key][i]) for key in encodings},
                 "length": len(encoding),  # Calculate sequence length for sorting
+                "original_index": i,  # Store original index for reordering
             }
         )
 
@@ -95,22 +95,25 @@ def collate_batch(batch):
         for key in batch[0]["tokens"]
     }
 
-    # Collect ids for tracking original order
+    # Collect ids and original indices for tracking original order
     ids = [item["id"] for item in batch]
-    return batch_tokens, ids
+    original_indices = [item["original_index"] for item in batch]
+    return batch_tokens, ids, original_indices
 
 
 def process_chunk(chunk, output_file):
     """Process each chunk, predict labels, and save results in original order."""
     sorted_data = tokenize_and_sort(chunk)
 
+    # Pre-allocate results list to restore original order
     results = [None] * len(sorted_data)
+
     data_loader = DataLoader(
         sorted_data, batch_size=BATCH_SIZE, collate_fn=collate_batch, shuffle=False
     )
 
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        for batch_tokens, ids in data_loader:
+        for batch_tokens, ids, original_indices in data_loader:
             # Run the model on the batch and get logits
             with torch.no_grad():
                 outputs = model(**batch_tokens)
@@ -119,12 +122,9 @@ def process_chunk(chunk, output_file):
             # Convert logits to probabilities
             probs = torch.softmax(logits, dim=-1).cpu().tolist()
 
-            # Store results in the correct place
-            for idx, (id_, prob) in enumerate(zip(ids, probs)):
-                original_index = next(
-                    j for j, item in enumerate(sorted_data) if item["id"] == id_
-                )
-                results[original_index] = {"id": id_, "probs": prob}
+            # Store results in the correct original index
+            for idx, (original_index, prob) in enumerate(zip(original_indices, probs)):
+                results[original_index] = {"id": ids[idx], "probs": prob}
 
     # Write results to output file in the original order
     with open(output_file, "a") as f:
