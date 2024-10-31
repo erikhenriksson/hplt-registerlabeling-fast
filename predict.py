@@ -139,7 +139,7 @@ def process_chunk(chunk, output_file):
     with open(output_file, "a") as f:
         for result in results:
             f.write(json.dumps(result) + "\n")
-    torch.cuda.empty_cache()  # Free GPU memory after each chunk
+    # torch.cuda.empty_cache()  # Free GPU memory after each chunk
 
 
 def main(input_file, chunk_size=CHUNK_SIZE):
