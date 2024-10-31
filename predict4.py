@@ -86,9 +86,11 @@ def process_chunk(chunk, buffered_writer):
         # Convert logits to probabilities
         probs = torch.softmax(logits, dim=-1).cpu().tolist()
 
-        # Store results at the correct original index
-        for idx, prob in zip(original_indices, probs):
-            results[idx - chunk[0]["original_index"]] = {"id": ids[idx], "probs": prob}
+        # Place results in the correct position in the results list
+        for batch_idx, (original_idx, prob) in enumerate(zip(original_indices, probs)):
+            # Compute the position within the results list
+            local_idx = original_idx - chunk[0]["original_index"]
+            results[local_idx] = {"id": ids[batch_idx], "probs": prob}
 
     # Write results to output file in the original order
     buffered_writer.write(
