@@ -69,24 +69,23 @@ def verify_checksum(file_path, md5_url):
         return False
 
 
-def shard_and_count_lines(file_path, num_shards=8):
-    shard_paths = [f"{file_path}_part{i}.jsonl" for i in range(1, num_shards + 1)]
-    shard_files = [
-        open(shard_path, "w", encoding="utf-8") for shard_path in shard_paths
-    ]
-    line_counts = [0] * num_shards
-    total_lines = 0
-
+def shard_and_count_lines(file_path, max_lines_per_shard=1000000):
     # First pass to count the total number of lines
+    total_lines = 0
     with open(file_path, "rb") as f:
         dctx = zstd.ZstdDecompressor()
         with dctx.stream_reader(f) as reader:
             text_stream = io.TextIOWrapper(reader, encoding="utf-8")
             total_lines = sum(1 for _ in text_stream)
 
-    # Determine the approximate number of lines per shard
-    lines_per_shard = total_lines // num_shards
-    remainder = total_lines % num_shards  # For handling any extra lines
+    # Determine the required number of shards
+    num_shards = (total_lines + max_lines_per_shard - 1) // max_lines_per_shard
+    shard_paths = [f"{file_path}_part{i}.jsonl" for i in range(1, num_shards + 1)]
+    shard_files = [
+        open(shard_path, "w", encoding="utf-8") for shard_path in shard_paths
+    ]
+    line_counts = [0] * num_shards
+    total_lines = 0
 
     # Second pass to read, count, and shard lines
     with open(file_path, "rb") as f:
@@ -96,7 +95,7 @@ def shard_and_count_lines(file_path, num_shards=8):
             line_number = 0
 
             for line in text_stream:
-                shard_index = min(line_number // lines_per_shard, num_shards - 1)
+                shard_index = min(line_number // max_lines_per_shard, num_shards - 1)
                 shard_files[shard_index].write(line)
                 line_counts[shard_index] += 1
                 line_number += 1
@@ -134,7 +133,7 @@ def process_datasets(lang_code):
                 print(f"Checksum verified for {file_name}")
 
                 # Shard file and count lines
-                shard_and_count_lines(file_path, num_shards=8)
+                shard_and_count_lines(file_path)
             else:
                 print(f"Checksum verification failed for {file_name}")
         else:
