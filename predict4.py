@@ -102,3 +102,14 @@ def main(input_file):
         buffered_writer = BufferedWriter(f)
         for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
             process_chunk(chunk, buffered_writer)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Efficient processing of large datasets."
+    )
+    parser.add_argument("input_file", type=str, help="Path to the input jsonl file.")
+    args = parser.parse_args()
+    main(args.input_file)
