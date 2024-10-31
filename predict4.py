@@ -26,6 +26,11 @@ model.to(device)
 # )
 model.eval()
 
+# Load id2label mapping from config.json
+with open(os.path.join(MODEL_DIR, "config.json"), "r") as f:
+    config = json.load(f)
+id2label = config["id2label"]
+
 
 def get_output_filename(input_file):
     dir_path, base_name = os.path.split(input_file)
@@ -87,17 +92,28 @@ def process_chunk(chunk):
 
         # Store each result with its original index to maintain order
         for idx, prob in zip(original_indices, probs):
+
             results.append(
                 {
                     "original_index": idx,
                     "id": ids[original_indices.index(idx)],
-                    "probs": prob,
+                    "registers": [
+                        id2label[str(i)] for i, p in enumerate(prob) if p >= 0.5
+                    ],
+                    "register_probabilities": [round(p, 4) for p in prob],
                 }
             )
 
     # Sort results by original index to ensure output order matches input order
     results.sort(key=lambda x: x["original_index"])
-    return [{"id": result["id"], "probs": result["probs"]} for result in results]
+    return [
+        {
+            "id": result["id"],
+            "registers": result["register"],
+            "register_probabilities": result["register_probabilities"],
+        }
+        for result in results
+    ]
 
 
 def main(input_file):
