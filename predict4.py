@@ -109,7 +109,7 @@ def process_chunk(chunk):
     return [
         {
             "id": result["id"],
-            "registers": result["register"],
+            "registers": result["registers"],
             "register_probabilities": result["register_probabilities"],
         }
         for result in results
