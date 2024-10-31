@@ -6,7 +6,7 @@ import zstandard as zstd
 import io
 from pathlib import Path
 
-DATA_FOLDER = "datasets"
+DATA_FOLDER = "data_deduplicated"
 VERIFIED_FILE = "verified_checksums.txt"
 
 # Ensure the directory exists
@@ -110,7 +110,10 @@ def shard_and_count_lines(file_path, num_shards=8):
     print(f"Total lines in {file_path}: {total_lines}")
 
 
-def process_datasets(url_list):
+def process_datasets(lang_code):
+    lang_folder = os.path.join(DATA_FOLDER, lang_code)
+    os.makedirs(lang_folder, exist_ok=True)
+    url_list = f"https://data.hplt-project.org/two/deduplicated/{lang_code}_map.txt"
     response = requests.get(url_list)
     if response.status_code != 200:
         print("Failed to download the URL list.")
@@ -119,7 +122,7 @@ def process_datasets(url_list):
     urls = response.text.strip().splitlines()
     for url in urls:
         file_name = os.path.basename(url)
-        file_path = os.path.join(DATA_FOLDER, file_name)
+        file_path = os.path.join(lang_folder, file_name)
 
         # Download the dataset file if not already present
         if download_file(url, file_path):
@@ -140,8 +143,8 @@ def process_datasets(url_list):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python script.py <URL_LIST>")
+        print("Usage: python get_data.py <lang_code>")
         sys.exit(1)
 
-    url_list = sys.argv[1]
-    process_datasets(url_list)
+    lang_code = sys.argv[1]
+    process_datasets(lang_code)
