@@ -67,7 +67,7 @@ def process_chunk(chunk):
         # Tokenize with automatic padding
         encodings = tokenizer(
             texts,
-            padding=True,
+            padding="longest",
             truncation=True,
             max_length=MAX_LENGTH,
             return_tensors="pt",
@@ -89,8 +89,7 @@ def process_chunk(chunk):
             local_idx = original_idx - chunk[0]["original_index"]
             results[local_idx] = {"id": ids[batch_idx], "probs": prob}
 
-    # Ensure all results are filled before returning
-    return [result for result in results if result]
+    return results
 
 
 def main(input_file):
