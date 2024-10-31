@@ -5,14 +5,14 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
 BATCH_SIZE = 64
 CHUNK_SIZE = 1000
 MAX_LENGTH = 512
-NUM_WORKERS = 4  # Number of parallel workers for tokenization
+NUM_WORKERS = 4  # Adjust based on available CPU cores
 
 # Set up model for speed and precision
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -32,7 +32,7 @@ def get_output_filename(input_file):
 
 
 def process_large_file(input_file):
-    """Generates chunks of documents from the input file."""
+    """Generate chunks of documents from the input file."""
     with open(input_file, "r") as f:
         chunk = []
         for line in f:
@@ -50,10 +50,8 @@ def tokenize_and_sort(chunk):
     texts = [item["text"] for item in chunk]
     ids = [item["id"] for item in chunk]
 
-    # Tokenize texts with padding=False to avoid extra padding
     encodings = tokenizer(texts, padding=False, truncation=True, max_length=MAX_LENGTH)
 
-    # Tokenized data with length and original index for sorting
     tokenized_data = [
         {
             "id": ids[i],
@@ -91,15 +89,17 @@ def collate_batch(batch):
 
 
 def process_chunk(chunk, output_file):
-    """Process each chunk and save results in the original order."""
+    """Process each chunk, predict labels, and save results in original order."""
     sorted_data = tokenize_and_sort(chunk)
     results = [None] * len(sorted_data)
 
+    # Use DataLoader with multi-threading for batch processing within each chunk
     data_loader = DataLoader(
         sorted_data,
         batch_size=BATCH_SIZE,
         collate_fn=collate_batch,
         shuffle=False,
+        num_workers=NUM_WORKERS,
         pin_memory=True,
     )
 
@@ -125,19 +125,8 @@ def process_chunk(chunk, output_file):
 
 def main(input_file):
     output_file = get_output_filename(input_file)
-    with ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
-        chunk_futures = []
-        for chunk in process_large_file(input_file):
-            future = executor.submit(process_chunk, chunk, output_file)
-            chunk_futures.append(future)
-
-        # Wait for each future to complete
-        for future in tqdm(
-            as_completed(chunk_futures),
-            total=len(chunk_futures),
-            desc="Processing Chunks",
-        ):
-            future.result()
+    for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
+        process_chunk(chunk, output_file)
 
 
 if __name__ == "__main__":
