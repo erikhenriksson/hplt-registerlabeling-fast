@@ -4,7 +4,8 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+from multiprocessing import Pool
 from transformers import AutoConfig
 
 # Constants and settings
@@ -25,7 +26,7 @@ tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
 model.to(device)
 model.eval()
-# model = model.to(dtype=torch.bfloat16)  # Cast model to bfloat16 for efficiency
+model = model.to(dtype=torch.bfloat16)  # Cast model to bfloat16 for efficiency
 
 
 def get_output_filename(input_file):
@@ -67,7 +68,6 @@ def tokenize_and_sort(chunk):
                 "id": ids[i],
                 "tokens": {key: torch.tensor(encodings[key][i]) for key in encodings},
                 "length": len(encoding),  # Calculate sequence length for sorting
-                "original_index": i,  # Store original index for reordering
             }
         )
 
@@ -80,7 +80,7 @@ def collate_batch(batch):
     """Custom collate function to batch data with similar lengths."""
     max_length = max(item["length"] for item in batch)
 
-    # Pad each tensor in the batch to the max length within the batch (CPU side)
+    # Pad each tensor in the batch to the max length within the batch
     batch_tokens = {
         key: torch.stack(
             [
@@ -91,38 +91,26 @@ def collate_batch(batch):
                 )
                 for item in batch
             ]
-        )
+        ).to(device)
         for key in batch[0]["tokens"]
     }
 
-    # Collect ids and original indices for tracking original order
+    # Collect ids for tracking original order
     ids = [item["id"] for item in batch]
-    original_indices = [item["original_index"] for item in batch]
-    return batch_tokens, ids, original_indices
+    return batch_tokens, ids
 
 
 def process_chunk(chunk, output_file):
     """Process each chunk, predict labels, and save results in original order."""
     sorted_data = tokenize_and_sort(chunk)
 
-    # Pre-allocate results list to restore original order
     results = [None] * len(sorted_data)
-
     data_loader = DataLoader(
-        sorted_data,
-        batch_size=BATCH_SIZE,
-        collate_fn=collate_batch,
-        shuffle=False,
-        pin_memory=True,
+        sorted_data, batch_size=BATCH_SIZE, collate_fn=collate_batch, shuffle=False
     )
 
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        for batch_tokens, ids, original_indices in data_loader:
-            # Move each tensor in batch_tokens to the device
-            batch_tokens = {
-                key: tensor.to(device) for key, tensor in batch_tokens.items()
-            }
-
+        for batch_tokens, ids in data_loader:
             # Run the model on the batch and get logits
             with torch.no_grad():
                 outputs = model(**batch_tokens)
@@ -131,15 +119,18 @@ def process_chunk(chunk, output_file):
             # Convert logits to probabilities
             probs = torch.softmax(logits, dim=-1).cpu().tolist()
 
-            # Store results in the correct original index
-            for idx, (original_index, prob) in enumerate(zip(original_indices, probs)):
-                results[original_index] = {"id": ids[idx], "probs": prob}
+            # Store results in the correct place
+            for idx, (id_, prob) in enumerate(zip(ids, probs)):
+                original_index = next(
+                    j for j, item in enumerate(sorted_data) if item["id"] == id_
+                )
+                results[original_index] = {"id": id_, "probs": prob}
 
     # Write results to output file in the original order
     with open(output_file, "a") as f:
         for result in results:
             f.write(json.dumps(result) + "\n")
-    # torch.cuda.empty_cache()  # Free GPU memory after each chunk
+    torch.cuda.empty_cache()  # Free GPU memory after each chunk
 
 
 def main(input_file, chunk_size=CHUNK_SIZE):
