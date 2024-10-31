@@ -1,7 +1,6 @@
 import os
 import json
 import torch
-import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
@@ -35,11 +34,12 @@ def get_output_filename(input_file):
 
 
 def process_large_file(input_file):
-    """Reads a large file in chunks, pre-sorting each chunk by text length before yielding."""
+    """Reads a large file in chunks, preserving the original order via indexing."""
     with open(input_file, "r") as f:
         chunk = []
-        for line in f:
+        for idx, line in enumerate(f):
             document = json.loads(line)
+            document["original_index"] = idx  # Track original index
             chunk.append(document)
             if len(chunk) >= CHUNK_SIZE:
                 # Sort each chunk by text length before yielding
@@ -52,94 +52,48 @@ def process_large_file(input_file):
             yield chunk
 
 
-def tokenize_and_sort(chunk):
-    """Tokenize documents in a chunk and prepare for batching."""
-    texts = [item["text"] for item in chunk]
-    ids = [item["id"] for item in chunk]
-
-    # Tokenize texts with padding=False, to keep each sequence length unique
-    encodings = tokenizer(texts, padding=False, truncation=True, max_length=MAX_LENGTH)
-
-    # Extract the tokenized input ids and attention masks
-    tokenized_data = []
-    for i, encoding in enumerate(encodings["input_ids"]):
-        tokenized_data.append(
-            {
-                "id": ids[i],
-                "tokens": {key: torch.tensor(encodings[key][i]) for key in encodings},
-                "length": len(
-                    encoding
-                ),  # Length is already sorted due to sorting in process_large_file
-                "original_index": i,  # Store original index for reordering
-            }
-        )
-
-    return tokenized_data
-
-
-def collate_batch(batch):
-    """Custom collate function to batch data with similar lengths."""
-    max_length = max(item["length"] for item in batch)
-
-    # Pad each tensor in the batch to the max length within the batch
-    batch_tokens = {
-        key: torch.stack(
-            [
-                F.pad(
-                    item["tokens"][key],
-                    (0, max_length - item["tokens"][key].shape[0]),
-                    value=tokenizer.pad_token_id,
-                )
-                for item in batch
-            ]
-        )
-        for key in batch[0]["tokens"]
-    }
-
-    # Collect ids and original indices for tracking original order
-    ids = [item["id"] for item in batch]
-    original_indices = [item["original_index"] for item in batch]
-    return batch_tokens, ids, original_indices
-
-
 def process_chunk(chunk, buffered_writer):
     """Process each chunk, predict labels, and save results in original order."""
-    sorted_data = tokenize_and_sort(chunk)
+    # Pre-allocate list for results with original indices
+    results = [None] * len(chunk)
 
-    # Pre-allocate results list to restore original order
-    results = [None] * len(sorted_data)
+    # Split the sorted chunk into smaller batches based on BATCH_SIZE
+    for i in range(0, len(chunk), BATCH_SIZE):
+        batch = chunk[i : i + BATCH_SIZE]
 
-    # Prepare DataLoader with length-based sorting for efficient padding
-    data_loader = DataLoader(
-        sorted_data,
-        batch_size=BATCH_SIZE,
-        collate_fn=collate_batch,
-        shuffle=False,
-        pin_memory=True,
-    )
+        # Extract texts, ids, and original indices for the batch
+        texts = [item["text"] for item in batch]
+        ids = [item["id"] for item in batch]
+        original_indices = [item["original_index"] for item in batch]
 
-    # Process each batch
-    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        for batch_tokens, ids, original_indices in data_loader:
-            # Move each tensor in batch_tokens to the device
-            batch_tokens = {
-                key: tensor.to(device) for key, tensor in batch_tokens.items()
-            }
+        # Tokenize with automatic padding
+        encodings = tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=MAX_LENGTH,
+            return_tensors="pt",
+        )
 
-            # Run the model on the batch and get logits
-            with torch.no_grad():
-                outputs = model(**batch_tokens)
-                logits = outputs.logits
+        # Move the tokenized batch to the device
+        encodings = {key: tensor.to(device) for key, tensor in encodings.items()}
 
-            # Convert logits to probabilities
-            probs = torch.softmax(logits, dim=-1).cpu().tolist()
+        # Run the model on the batch and get logits
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            outputs = model(**encodings)
+            logits = outputs.logits
 
-            # Store results in the correct original index
-            for idx, (original_index, prob) in enumerate(zip(original_indices, probs)):
-                results[original_index] = {"id": ids[idx], "probs": prob}
+        # Convert logits to probabilities
+        probs = torch.softmax(logits, dim=-1).cpu().tolist()
+
+        # Store results at the correct original index
+        for idx, prob in zip(original_indices, probs):
+            results[idx - chunk[0]["original_index"]] = {"id": ids[idx], "probs": prob}
 
     # Write results to output file in the original order
-    buffered_writer.write("\n".join(json.dumps(result) for result in results) + "\n")
+    buffered_writer.write(
+        "\n".join(json.dumps(result) for result in results if result) + "\n"
+    )
 
 
 def main(input_file):
@@ -148,14 +102,3 @@ def main(input_file):
         buffered_writer = BufferedWriter(f)
         for chunk in tqdm(process_large_file(input_file), desc="Processing Chunks"):
             process_chunk(chunk, buffered_writer)
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Efficient processing of large datasets."
-    )
-    parser.add_argument("input_file", type=str, help="Path to the input jsonl file.")
-    args = parser.parse_args()
-    main(args.input_file)
