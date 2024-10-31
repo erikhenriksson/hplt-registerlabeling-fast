@@ -92,7 +92,7 @@ def process_chunk(chunk, buffered_writer):
 
     # Write results to output file in the original order
     buffered_writer.write(
-        "\n".join(json.dumps(result) for result in results if result) + "\n"
+        ("\n".join(json.dumps(result) for result in results) + "\n").encode("utf-8")
     )
 
 
