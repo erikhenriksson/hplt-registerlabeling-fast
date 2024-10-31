@@ -125,7 +125,10 @@ def process_chunk(chunk, output_file):
             # Run the model on the batch and get logits
             with torch.no_grad():
                 outputs = model(**batch_tokens)
-                logits = outputs.logits
+                logits = (
+                    outputs.logits.cpu()
+                )  # Directly transfer to CPU, saving GPU memory
+                probs = F.softmax(logits, dim=-1).tolist()
 
             # Convert logits to probabilities
             probs = torch.softmax(logits, dim=-1).cpu().tolist()
