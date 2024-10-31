@@ -3,6 +3,7 @@ import json
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import time
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
