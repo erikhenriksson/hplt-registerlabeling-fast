@@ -6,6 +6,8 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
 import time  # Import the time module for timing each chunk
+import aiofiles  # Install aiofiles first with `pip install aiofiles`
+import asyncio
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
@@ -97,7 +99,13 @@ def collate_batch(batch):
     return batch_tokens, ids, original_indices
 
 
-def process_chunk(chunk, output_file):
+async def write_results_async(output_file, results):
+    async with aiofiles.open(output_file, "a") as f:
+        for result in results:
+            await f.write(json.dumps(result) + "\n")
+
+
+async def process_chunk(chunk, output_file):
     """Process each chunk, predict labels, and save results in original order."""
     start_time = time.time()  # Start timing for the chunk
     sorted_data = tokenize_and_sort(chunk)
@@ -125,10 +133,7 @@ def process_chunk(chunk, output_file):
             # Run the model on the batch and get logits
             with torch.no_grad():
                 outputs = model(**batch_tokens)
-                logits = (
-                    outputs.logits.cpu()
-                )  # Directly transfer to CPU, saving GPU memory
-                probs = F.softmax(logits, dim=-1).tolist()
+                logits = outputs.logits
 
             # Convert logits to probabilities
             probs = torch.softmax(logits, dim=-1).cpu().tolist()
@@ -138,9 +143,7 @@ def process_chunk(chunk, output_file):
                 results[original_index] = {"id": ids[idx], "probs": prob}
 
     # Write results to output file in the original order
-    with open(output_file, "a") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
+    await write_results_async(output_file, results)  # Replace sync writing with async
 
     end_time = time.time()  # End timing for the chunk
     chunk_duration = end_time - start_time
