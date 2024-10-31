@@ -145,6 +145,7 @@ def process_chunk(chunk, output_file):
     end_time = time.time()  # End timing for the chunk
     chunk_duration = end_time - start_time
     print(f"Chunk processed in {chunk_duration:.2f} seconds.")  # Log the throughput
+    print(f"Throughput: {len(chunk) / chunk_duration:.2f} docs/s")  # Log the throughput
 
 
 def main(input_file):
