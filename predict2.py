@@ -6,8 +6,6 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import DataLoader
 import time  # Import the time module for timing each chunk
-import aiofiles  # Install aiofiles first with `pip install aiofiles`
-import asyncio
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
@@ -99,13 +97,7 @@ def collate_batch(batch):
     return batch_tokens, ids, original_indices
 
 
-async def write_results_async(output_file, results):
-    async with aiofiles.open(output_file, "a") as f:
-        for result in results:
-            await f.write(json.dumps(result) + "\n")
-
-
-async def process_chunk(chunk, output_file):
+def process_chunk(chunk, output_file):
     """Process each chunk, predict labels, and save results in original order."""
     start_time = time.time()  # Start timing for the chunk
     sorted_data = tokenize_and_sort(chunk)
@@ -143,7 +135,9 @@ async def process_chunk(chunk, output_file):
                 results[original_index] = {"id": ids[idx], "probs": prob}
 
     # Write results to output file in the original order
-    await write_results_async(output_file, results)  # Replace sync writing with async
+    with open(output_file, "a") as f:
+        for result in results:
+            f.write(json.dumps(result) + "\n")
 
     end_time = time.time()  # End timing for the chunk
     chunk_duration = end_time - start_time
