@@ -88,7 +88,7 @@ def process_chunk(chunk):
             logits = outputs.logits
 
         # Convert logits to probabilities
-        probs = torch.softmax(logits, dim=-1).cpu().tolist()
+        probs = torch.sigmoid(logits).cpu().tolist()
 
         # Store each result with its original index to maintain order
         for idx, prob in zip(original_indices, probs):
