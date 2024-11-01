@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:a100:4                 
 #SBATCH --ntasks=4                    
 #SBATCH --cpus-per-task=16         
-#SBATCH --time=08:00:00  
+#SBATCH --time=00:15:00  
 #SBATCH --output=logs/output_%j.lo
 #SBATCH --error=logs/error_%j.log  
 #SBATCH --account=project_2011770
