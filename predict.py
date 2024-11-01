@@ -1,161 +1,161 @@
 import os
 import json
 import torch
-import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from torch.utils.data import DataLoader, Dataset
-from multiprocessing import Pool
-from transformers import AutoConfig
+import time
 
 # Constants and settings
 MODEL_DIR = "models/xlm-roberta-base"
 BATCH_SIZE = 64
-CHUNK_SIZE = 1000  # Number of documents per chunk, can be adjusted
-MAX_LENGTH = 512  # Max token length
+CHUNK_SIZE = 1024
+MAX_LENGTH = 512
 
 # Set up model for speed and precision
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cuda.matmul.allow_tf32 = True
-torch.set_float32_matmul_precision("high")  # Enables tf32 where available
+torch.set_float32_matmul_precision("high")
+torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
 
-# Load tokenizer from the base model
+# Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
-
-# Load the finetuned model
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
 model.to(device)
+model = torch.compile(
+    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
+)
 model.eval()
-model = model.to(dtype=torch.bfloat16)  # Cast model to bfloat16 for efficiency
+
+# Load id2label mapping from config.json
+with open(os.path.join(MODEL_DIR, "config.json"), "r") as f:
+    config = json.load(f)
+id2label = config["id2label"]
 
 
 def get_output_filename(input_file):
-    """Generate dynamic output filename based on input filename."""
     dir_path, base_name = os.path.split(input_file)
-    output_file = os.path.join(
-        dir_path, base_name.replace(".jsonl", "_register_labels.jsonl")
-    )
-    return output_file
+    return os.path.join(dir_path, base_name.replace(".jsonl", "_register_labels.jsonl"))
 
 
-def process_large_file(input_file, chunk_size=CHUNK_SIZE):
-    """Stream and process large JSONL files in manageable chunks."""
+def process_large_file(input_file):
+    """Reads a large file in chunks, preserving the original order via indexing."""
     with open(input_file, "r") as f:
         chunk = []
-        for line in f:
+        for idx, line in enumerate(f):
             document = json.loads(line)
+            document["original_index"] = idx  # Track original index
             chunk.append(document)
-            if len(chunk) >= chunk_size:
+            if len(chunk) >= CHUNK_SIZE:
+                # Sort each chunk by text length before yielding
+                chunk.sort(key=lambda x: len(x["text"]), reverse=True)
                 yield chunk
                 chunk = []
         if chunk:
+            # Sort the last chunk if it has any remaining data
+            chunk.sort(key=lambda x: len(x["text"]), reverse=True)
             yield chunk
 
 
-def tokenize_and_sort(chunk):
-    """Tokenize documents in a chunk, calculate lengths, and sort by length."""
-    texts = [item["text"] for item in chunk]
-    ids = [item["id"] for item in chunk]
+def process_chunk(chunk):
+    """Process each chunk, predict labels, and save results in original order."""
+    # List to hold results in the original order
+    results = []
 
-    # Tokenize texts with padding=False, to keep each sequence length unique
-    encodings = tokenizer(texts, padding=False, truncation=True, max_length=MAX_LENGTH)
+    # Split the sorted chunk into smaller batches based on BATCH_SIZE
+    for i in range(0, len(chunk), BATCH_SIZE):
+        batch = chunk[i : i + BATCH_SIZE]
 
-    # Extract the tokenized input ids and attention masks, and calculate lengths
-    tokenized_data = []
-    for i, encoding in enumerate(encodings["input_ids"]):
-        tokenized_data.append(
-            {
-                "id": ids[i],
-                "tokens": {key: torch.tensor(encodings[key][i]) for key in encodings},
-                "length": len(encoding),  # Calculate sequence length for sorting
-            }
+        # Extract texts, ids, and original indices for the batch
+        texts = [item["text"] for item in batch]
+        ids = [item["id"] for item in batch]
+        original_indices = [item["original_index"] for item in batch]
+
+        # Tokenize with dynamic padding to the longest sequence in the batch
+        encodings = tokenizer(
+            texts,
+            padding="longest",
+            truncation=True,
+            max_length=MAX_LENGTH,
+            return_tensors="pt",
         )
 
-    # Sort by length
-    tokenized_data.sort(key=lambda x: x["length"], reverse=True)
-    return tokenized_data
+        # Move the tokenized batch to the device
+        encodings = {key: tensor.to(device) for key, tensor in encodings.items()}
+
+        # Run the model on the batch and get logits
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            outputs = model(**encodings)
+            logits = outputs.logits
+
+        # Convert logits to probabilities
+        probs = torch.sigmoid(logits).cpu().tolist()
+
+        # Store each result with its original index to maintain order
+        for idx, prob in zip(original_indices, probs):
+
+            results.append(
+                {
+                    "original_index": idx,
+                    "id": ids[original_indices.index(idx)],
+                    "registers": [
+                        id2label[str(i)] for i, p in enumerate(prob) if p >= 0.5
+                    ],
+                    "register_probabilities": [round(p, 4) for p in prob],
+                }
+            )
+
+    # Sort results by original index to ensure output order matches input order
+    results.sort(key=lambda x: x["original_index"])
+    return [
+        {
+            "id": result["id"],
+            "registers": result["registers"],
+            "register_probabilities": result["register_probabilities"],
+        }
+        for result in results
+    ]
 
 
-def collate_batch(batch):
-    """Custom collate function to batch data with similar lengths."""
-    max_length = max(item["length"] for item in batch)
-
-    # Pad each tensor in the batch to the max length within the batch
-    batch_tokens = {
-        key: torch.stack(
-            [
-                F.pad(
-                    item["tokens"][key],
-                    (0, max_length - item["tokens"][key].shape[0]),
-                    value=tokenizer.pad_token_id,
-                )
-                for item in batch
-            ]
-        ).to(device)
-        for key in batch[0]["tokens"]
-    }
-
-    # Collect ids for tracking original order
-    ids = [item["id"] for item in batch]
-    return batch_tokens, ids
-
-
-def process_chunk(chunk, output_file):
-    """Process each chunk, predict labels, and save results in original order."""
-    sorted_data = tokenize_and_sort(chunk)
-
-    results = [None] * len(sorted_data)
-    data_loader = DataLoader(
-        sorted_data, batch_size=BATCH_SIZE, collate_fn=collate_batch, shuffle=False
-    )
-
-    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        for batch_tokens, ids in data_loader:
-            # Run the model on the batch and get logits
-            with torch.no_grad():
-                outputs = model(**batch_tokens)
-                logits = outputs.logits
-
-            # Convert logits to probabilities
-            probs = torch.softmax(logits, dim=-1).cpu().tolist()
-
-            # Store results in the correct place
-            for idx, (id_, prob) in enumerate(zip(ids, probs)):
-                original_index = next(
-                    j for j, item in enumerate(sorted_data) if item["id"] == id_
-                )
-                results[original_index] = {"id": id_, "probs": prob}
-
-    # Write results to output file in the original order
-    with open(output_file, "a") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
-    torch.cuda.empty_cache()  # Free GPU memory after each chunk
-
-
-def main(input_file, chunk_size=CHUNK_SIZE):
+def main(input_file):
     output_file = get_output_filename(input_file)
-    chunk_stream = process_large_file(input_file, chunk_size)
+    total_items = 0
+    total_time = 0.0
+    with open(output_file, "a") as f:
+        with tqdm(process_large_file(input_file), desc="Processing Chunks") as pbar:
+            for chunk in pbar:
+                start_time = time.perf_counter()
 
-    for chunk_num, chunk in enumerate(tqdm(chunk_stream, desc="Processing Chunks")):
-        print(f"Processing chunk {chunk_num + 1}...")
-        process_chunk(chunk, output_file)
+                results = process_chunk(chunk)
+
+                f.write("\n".join(json.dumps(result) for result in results) + "\n")
+
+                end_time = time.perf_counter()
+
+                elapsed_time = end_time - start_time
+                throughput = (
+                    len(chunk) / elapsed_time if elapsed_time > 0 else float("inf")
+                )
+
+                # Update totals
+                total_items += len(chunk)
+                total_time += elapsed_time
+                average_throughput = (
+                    total_items / total_time if total_time > 0 else float("inf")
+                )
+
+                # Update the progress bar with throughput information
+                pbar.set_postfix(
+                    {
+                        "Throughput (items/s)": f"{throughput:.2f}",
+                        "Avg Throughput (items/s)": f"{average_throughput:.2f}",
+                    }
+                )
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Prediction script for efficient processing of large datasets."
-    )
+    parser = argparse.ArgumentParser()
     parser.add_argument("input_file", type=str, help="Path to the input jsonl file.")
-    parser.add_argument(
-        "--chunk_size",
-        type=int,
-        default=CHUNK_SIZE,
-        help="Number of documents per chunk.",
-    )
-
     args = parser.parse_args()
-
-    main(args.input_file, args.chunk_size)
+    main(args.input_file)
