@@ -92,7 +92,6 @@ def process_chunk(chunk):
 
         # Store each result with its original index to maintain order
         for idx, prob in zip(original_indices, probs):
-
             results.append(
                 {
                     "original_index": idx,
@@ -121,34 +120,30 @@ def main(input_file):
     total_items = 0
     total_time = 0.0
     with open(output_file, "a") as f:
-        with tqdm(process_large_file(input_file), desc="Processing Chunks") as pbar:
-            for chunk in pbar:
-                start_time = time.perf_counter()
+        for chunk_idx, chunk in enumerate(process_large_file(input_file)):
+            start_time = time.perf_counter()
 
-                results = process_chunk(chunk)
+            results = process_chunk(chunk)
 
-                f.write("\n".join(json.dumps(result) for result in results) + "\n")
+            f.write("\n".join(json.dumps(result) for result in results) + "\n")
 
-                end_time = time.perf_counter()
+            end_time = time.perf_counter()
 
-                elapsed_time = end_time - start_time
-                throughput = (
-                    len(chunk) / elapsed_time if elapsed_time > 0 else float("inf")
-                )
+            elapsed_time = end_time - start_time
+            throughput = len(chunk) / elapsed_time if elapsed_time > 0 else float("inf")
 
-                # Update totals
-                total_items += len(chunk)
-                total_time += elapsed_time
-                average_throughput = (
-                    total_items / total_time if total_time > 0 else float("inf")
-                )
+            # Update totals
+            total_items += len(chunk)
+            total_time += elapsed_time
+            average_throughput = (
+                total_items / total_time if total_time > 0 else float("inf")
+            )
 
-                # Update the progress bar with throughput information
-                pbar.set_postfix(
-                    {
-                        "Throughput (items/s)": f"{throughput:.2f}",
-                        "Avg Throughput (items/s)": f"{average_throughput:.2f}",
-                    }
+            # Log progress every 10 chunks instead of on every iteration
+            if chunk_idx % 100 == 0:
+                print(
+                    f"Chunk {chunk_idx}: Throughput = {throughput:.2f} items/s, "
+                    f"Average Throughput = {average_throughput:.2f} items/s"
                 )
 
 
