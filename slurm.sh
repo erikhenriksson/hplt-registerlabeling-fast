@@ -1,44 +1,22 @@
 #!/bin/bash
-#SBATCH --ntasks=1
+#SBATCH --job-name=hplt-registers
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=32
+#SBATCH --gres=gpu:a100:4
+#SBATCH --ntasks=4
+#SBATCH --mem=16G
+#SBATCH --cpus-per-task=16
+#SBATCH --time=06:00:00
+#SBATCH --output=logs/output_%j.log
+#SBATCH --error=logs/error_%j.log
 #SBATCH --account=project_2011770
-#SBATCH --mail-type=ALL
+#SBATCH --partition=gpumedium
 
-if [[ -z "$SLURM_JOB_ID" ]]; then
-  PARTITION="gpumedium"
-  TIME="8:00:00"
-  NUM_GPUS=4
-  MEM=8
-  if [[ $1 == "1h" ]]; then
-    TIME="1:00:00"
-    shift 
-  elif [[ $1 == "2h" ]]; then
-    TIME="2:00:00"
-    shift 
-  elif [[ $1 == "6h" ]]; then
-    TIME="6:00:00"
-    shift 
-  elif [[ $1 == "12h" ]]; then
-    TIME="12:00:00"
-    shift 
-  elif [[ $1 == "30m" ]]; then
-    TIME="0:30:00"
-    shift 
-  fi
+module load pytorch/2.4
 
-  GRES_GPU="gpu:a100:$NUM_GPUS"
-  DYNAMIC_JOBNAME="$1"
-  shift  
-  JOB_SUBMISSION_OUTPUT=$(sbatch --job-name="$DYNAMIC_JOBNAME" --time="$TIME" --gres="$GRES_GPU" --mem="$MEM"G --partition="$PARTITION" -o "logs/${DYNAMIC_JOBNAME}-%j.log" "$0" "$@")
-  echo "Submission output: $JOB_SUBMISSION_OUTPUT"
-  JOB_ID=$(echo "$JOB_SUBMISSION_OUTPUT" | grep -oP 'Submitted batch job \K\d+')
-  LOG_FILE="logs/${DYNAMIC_JOBNAME}-${JOB_ID}.log"
-  touch $LOG_FILE
-  echo "tail -f $LOG_FILE"
-  tail -f "$LOG_FILE"
-  exit $?
-else
-  module use /appl/local/csc/modulefiles; module load pytorch/2.4; module use /appl/local/csc/modulefiles; module load pytorch/2.4
-  srun python3 "$@"
-fi
+# Launch each execution of predict.py using one specific GPU
+srun python3 predict.py /scratch/project_2011770/webscale-registers/splits/deduplicated/fin_Latn/1/00.jsonl &
+srun python3 predict.py /scratch/project_2011770/webscale-registers/splits/deduplicated/fin_Latn/1/01.jsonl &
+srun python3 predict.py /scratch/project_2011770/webscale-registers/splits/deduplicated/fin_Latn/1/02.jsonl &
+srun python3 predict.py /scratch/project_2011770/webscale-registers/splits/deduplicated/fin_Latn/1/03.jsonl &
+
+wait  # Wait for all background tasks to complete
