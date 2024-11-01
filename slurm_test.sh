@@ -2,7 +2,9 @@
 #SBATCH --job-name=hplt-registers          
 #SBATCH --nodes=1                       
 #SBATCH --gres=gpu:a100:4                 
-#SBATCH --ntasks=4                    
+#SBATCH --ntasks=4            
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem=16G        
 #SBATCH --cpus-per-task=16         
 #SBATCH --time=00:15:00  
 #SBATCH --output=logs/output_%j.lo
