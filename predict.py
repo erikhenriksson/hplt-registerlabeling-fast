@@ -97,7 +97,7 @@ def process_chunk(chunk):
                     "original_index": idx,
                     "id": ids[original_indices.index(idx)],
                     "registers": [
-                        id2label[str(i)] for i, p in enumerate(prob) if p >= 0.5
+                        id2label[str(i)] for i, p in enumerate(prob) if p >= 0.4
                     ],
                     "register_probabilities": [round(p, 4) for p in prob],
                 }

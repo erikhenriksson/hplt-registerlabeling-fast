@@ -2,13 +2,13 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=32
-#SBATCH --account=project_2011109
+#SBATCH --account=project_2011770
 #SBATCH --mail-type=ALL
 
 if [[ -z "$SLURM_JOB_ID" ]]; then
-  PARTITION="gpusmall"
-  TIME="1:00:00"
-  NUM_GPUS=1
+  PARTITION="gpumedium"
+  TIME="8:00:00"
+  NUM_GPUS=4
   MEM=8
   if [[ $1 == "1h" ]]; then
     TIME="1:00:00"
