@@ -56,7 +56,7 @@ def process_large_file(input_file):
             yield chunk
 
 
-def process_chunk(chunk, threshold):
+def process_chunk(chunk, threshold, token_limit):
     """Process each chunk, predict labels, and save results in original order."""
     results = []
     for i in range(0, len(chunk), BATCH_SIZE):
@@ -96,8 +96,8 @@ def process_chunk(chunk, threshold):
             # Create a dictionary of register names and their probabilities
             register_probs = {id2label[str(i)]: round(p, 4) for i, p in enumerate(prob)}
 
-            # If the text is shorter than 10 tokens, no registers are assigned
-            if input_length < 10:
+            # If the text is shorter than the token limit, no registers are assigned
+            if input_length < token_limit:
                 registers = []
             else:
                 # Determine which registers have a probability >= threshold
@@ -126,7 +126,7 @@ def process_chunk(chunk, threshold):
     ]
 
 
-def main(input_file, threshold):
+def main(input_file, threshold, token_limit):
     output_file = get_output_filename(input_file)
     total_items = 0
     total_time = 0.0
@@ -134,7 +134,7 @@ def main(input_file, threshold):
         for chunk_idx, chunk in enumerate(process_large_file(input_file)):
             start_time = time.perf_counter()
 
-            results = process_chunk(chunk, threshold)
+            results = process_chunk(chunk, threshold, token_limit)
 
             f.write("\n".join(json.dumps(result) for result in results) + "\n")
 
@@ -169,5 +169,11 @@ if __name__ == "__main__":
         default=0.4,
         help="Threshold for register probability.",
     )
+    parser.add_argument(
+        "--token_limit",
+        type=int,
+        default=10,
+        help="Minimum number of tokens required to assign registers.",
+    )
     args = parser.parse_args()
-    main(args.input_file, args.threshold)
+    main(args.input_file, args.threshold, args.token_limit)
