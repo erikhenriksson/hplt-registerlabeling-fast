@@ -61,7 +61,7 @@ for i in `seq 0 $((SPLIT_PARTS-1))`; do
 	--gres=gpu:mi250:1 \
 	python3 predict.py \
 	"$SPLIT_DIR/0$i.jsonl" \
-	> "$PREDICT_DIR/0$i.jsonl" \
+	"$PREDICT_DIR/0$i.jsonl" \
 	&
 done
     
