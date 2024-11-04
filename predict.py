@@ -56,7 +56,7 @@ def process_large_file(input_file):
             yield chunk
 
 
-def process_chunk(chunk):
+def process_chunk(chunk, threshold):
     """Process each chunk, predict labels, and save results in original order."""
     results = []
     for i in range(0, len(chunk), BATCH_SIZE):
@@ -100,9 +100,9 @@ def process_chunk(chunk):
             if input_length < 10:
                 registers = []
             else:
-                # Determine which registers have a probability >= 0.4
+                # Determine which registers have a probability >= threshold
                 registers = [
-                    register for register, p in register_probs.items() if p >= 0.4
+                    register for register, p in register_probs.items() if p >= threshold
                 ]
 
             results.append(
@@ -126,7 +126,7 @@ def process_chunk(chunk):
     ]
 
 
-def main(input_file):
+def main(input_file, threshold):
     output_file = get_output_filename(input_file)
     total_items = 0
     total_time = 0.0
@@ -134,7 +134,7 @@ def main(input_file):
         for chunk_idx, chunk in enumerate(process_large_file(input_file)):
             start_time = time.perf_counter()
 
-            results = process_chunk(chunk)
+            results = process_chunk(chunk, threshold)
 
             f.write("\n".join(json.dumps(result) for result in results) + "\n")
 
@@ -163,5 +163,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", type=str, help="Path to the input jsonl file.")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.4,
+        help="Threshold for register probability.",
+    )
     args = parser.parse_args()
-    main(args.input_file)
+    main(args.input_file, args.threshold)
