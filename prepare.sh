@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-source common.sh
+source common_mahti.sh
 
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 PACKAGE" >&2
