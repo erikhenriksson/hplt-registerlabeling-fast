@@ -126,7 +126,7 @@ def main(args):
         config = json.load(f)
     id2label = config["id2label"]
 
-    output_file = get_output_filename(args.input_file)
+    output_file = args.output_file
     total_items = 0
     total_time = 0.0
     with open(output_file, "a") as f:
@@ -172,6 +172,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", type=str, help="Path to the input jsonl file.")
+    parser.add_argument("output_file", type=str, help="Path to the output jsonl file.")
     parser.add_argument(
         "--threshold",
         type=float,
