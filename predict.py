@@ -6,9 +6,6 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import time
 
 # Constants and settings
-MODEL_DIR = "models/xlm-roberta-base"
-BATCH_SIZE = 64
-CHUNK_SIZE = 1024
 MAX_LENGTH = 512
 
 # Set up model for speed and precision
@@ -17,27 +14,13 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.set_float32_matmul_precision("high")
 torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
 
-# Load tokenizer and model
-tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
-model.to(device)
-model = torch.compile(
-    model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
-)
-model.eval()
-
-# Load id2label mapping from config.json
-with open(os.path.join(MODEL_DIR, "config.json"), "r") as f:
-    config = json.load(f)
-id2label = config["id2label"]
-
 
 def get_output_filename(input_file):
     dir_path, base_name = os.path.split(input_file)
     return os.path.join(dir_path, base_name.replace(".jsonl", "_register_labels.jsonl"))
 
 
-def process_large_file(input_file):
+def process_large_file(input_file, chunk_size):
     """Reads a large file in chunks, preserving the original order via indexing."""
     with open(input_file, "r") as f:
         chunk = []
@@ -45,7 +28,7 @@ def process_large_file(input_file):
             document = json.loads(line)
             document["original_index"] = idx  # Track original index
             chunk.append(document)
-            if len(chunk) >= CHUNK_SIZE:
+            if len(chunk) >= chunk_size:
                 # Sort each chunk by text length before yielding
                 chunk.sort(key=lambda x: len(x["text"]), reverse=True)
                 yield chunk
@@ -56,11 +39,13 @@ def process_large_file(input_file):
             yield chunk
 
 
-def process_chunk(chunk, threshold, token_limit):
+def process_chunk(
+    chunk, threshold, token_limit, batch_size, tokenizer, model, id2label
+):
     """Process each chunk, predict labels, and save results in original order."""
     results = []
-    for i in range(0, len(chunk), BATCH_SIZE):
-        batch = chunk[i : i + BATCH_SIZE]
+    for i in range(0, len(chunk), batch_size):
+        batch = chunk[i : i + batch_size]
 
         texts = [item["text"] for item in batch]
         ids = [item["id"] for item in batch]
@@ -126,15 +111,39 @@ def process_chunk(chunk, threshold, token_limit):
     ]
 
 
-def main(input_file, threshold, token_limit):
-    output_file = get_output_filename(input_file)
+def main(args):
+    # Load tokenizer and model
+    tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+    model = AutoModelForSequenceClassification.from_pretrained(args.model_dir)
+    model.to(device)
+    model = torch.compile(
+        model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
+    )
+    model.eval()
+
+    # Load id2label mapping from config.json
+    with open(os.path.join(args.model_dir, "config.json"), "r") as f:
+        config = json.load(f)
+    id2label = config["id2label"]
+
+    output_file = get_output_filename(args.input_file)
     total_items = 0
     total_time = 0.0
     with open(output_file, "a") as f:
-        for chunk_idx, chunk in enumerate(process_large_file(input_file)):
+        for chunk_idx, chunk in enumerate(
+            process_large_file(args.input_file, args.chunk_size)
+        ):
             start_time = time.perf_counter()
 
-            results = process_chunk(chunk, threshold, token_limit)
+            results = process_chunk(
+                chunk,
+                args.threshold,
+                args.token_limit,
+                args.batch_size,
+                tokenizer,
+                model,
+                id2label,
+            )
 
             f.write("\n".join(json.dumps(result) for result in results) + "\n")
 
@@ -175,5 +184,23 @@ if __name__ == "__main__":
         default=10,
         help="Minimum number of tokens required to assign registers.",
     )
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        default="models/xlm-roberta-base",
+        help="Path to the model directory.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=64,
+        help="Number of items per batch.",
+    )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=1024,
+        help="Number of items per chunk.",
+    )
     args = parser.parse_args()
-    main(args.input_file, args.threshold, args.token_limit)
+    main(args)
