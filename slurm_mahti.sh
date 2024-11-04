@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:a100:4
 #SBATCH --ntasks=4
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem=64G
 #SBATCH --cpus-per-task=2
 #SBATCH --time=06:00:00
 #SBATCH --output=slurm-logs/%j.out
@@ -60,6 +60,7 @@ for i in `seq 0 $((SPLIT_PARTS-1))`; do
     srun \
 	--ntasks=1 \
 	--gres=gpu:a100:1 \
+    --mem=16G \
 	python3 predict.py \
 	"$SPLIT_DIR/0$i.jsonl" \
 	"$PREDICT_DIR/0$i.jsonl" \
