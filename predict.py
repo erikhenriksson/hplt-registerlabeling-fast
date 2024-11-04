@@ -113,7 +113,7 @@ def process_chunk(
 
 def main(args):
     # Load tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+    tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
     model = AutoModelForSequenceClassification.from_pretrained(args.model_dir)
     model.to(device)
     model = torch.compile(
