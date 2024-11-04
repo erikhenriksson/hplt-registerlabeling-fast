@@ -6,9 +6,9 @@
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:a100:4
 #SBATCH --ntasks=4
-#SBATCH --mem-per-cpu=16G
+#SBATCH --mem-per-cpu=8G
 #SBATCH --cpus-per-task=2
-#SBATCH --time=06:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output=slurm-logs/%j.out
 #SBATCH --error=slurm-logs/%j.err
 #SBATCH --account=project_2011770
