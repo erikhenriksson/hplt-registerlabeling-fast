@@ -58,14 +58,10 @@ def process_large_file(input_file):
 
 def process_chunk(chunk):
     """Process each chunk, predict labels, and save results in original order."""
-    # List to hold results in the original order
     results = []
-
-    # Split the sorted chunk into smaller batches based on BATCH_SIZE
     for i in range(0, len(chunk), BATCH_SIZE):
         batch = chunk[i : i + BATCH_SIZE]
 
-        # Extract texts, ids, and original indices for the batch
         texts = [item["text"] for item in batch]
         ids = [item["id"] for item in batch]
         original_indices = [item["original_index"] for item in batch]
@@ -82,6 +78,9 @@ def process_chunk(chunk):
         # Move the tokenized batch to the device
         encodings = {key: tensor.to(device) for key, tensor in encodings.items()}
 
+        # Compute the length of each tokenized text (number of tokens before padding)
+        input_lengths = encodings["attention_mask"].sum(dim=1).cpu().tolist()
+
         # Run the model on the batch and get logits
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             outputs = model(**encodings)
@@ -91,15 +90,27 @@ def process_chunk(chunk):
         probs = torch.sigmoid(logits).cpu().tolist()
 
         # Store each result with its original index to maintain order
-        for idx, prob in zip(original_indices, probs):
+        for id_, idx, prob, input_length in zip(
+            ids, original_indices, probs, input_lengths
+        ):
+            # Create a dictionary of register names and their probabilities
+            register_probs = {id2label[str(i)]: round(p, 4) for i, p in enumerate(prob)}
+
+            # If the text is shorter than 10 tokens, no registers are assigned
+            if input_length < 10:
+                registers = []
+            else:
+                # Determine which registers have a probability >= 0.4
+                registers = [
+                    register for register, p in register_probs.items() if p >= 0.4
+                ]
+
             results.append(
                 {
                     "original_index": idx,
-                    "id": ids[original_indices.index(idx)],
-                    "registers": [
-                        id2label[str(i)] for i, p in enumerate(prob) if p >= 0.4
-                    ],
-                    "register_probabilities": [round(p, 4) for p in prob],
+                    "id": id_,
+                    "registers": registers,
+                    "register_probabilities": register_probs,
                 }
             )
 
@@ -139,7 +150,7 @@ def main(input_file):
                 total_items / total_time if total_time > 0 else float("inf")
             )
 
-            # Log progress every 10 chunks instead of on every iteration
+            # Log progress every 100 chunks instead of on every iteration
             if chunk_idx % 100 == 0:
                 print(
                     f"Chunk {chunk_idx}: Throughput = {throughput:.2f} items/s, "
