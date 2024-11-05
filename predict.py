@@ -92,9 +92,14 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
     model = AutoModelForSequenceClassification.from_pretrained(args.model_dir)
     model.to(device)
-    model = torch.compile(
-        model, mode="reduce-overhead", fullgraph=True, dynamic=True, backend="inductor"
-    )
+    if args.compile:
+        model = torch.compile(
+            model,
+            mode="reduce-overhead",
+            fullgraph=True,
+            dynamic=True,
+            backend="inductor",
+        )
     model.eval()
 
     # Load id2label mapping from config.json
@@ -170,6 +175,12 @@ if __name__ == "__main__":
         type=int,
         default=1024,
         help="Number of items per chunk.",
+    )
+    parser.add_argument(
+        "--compile",
+        type=int,
+        default=1,
+        help="Whether to use torch compile.",
     )
     args = parser.parse_args()
     main(args)
