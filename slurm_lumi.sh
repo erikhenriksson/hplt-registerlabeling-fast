@@ -2,16 +2,17 @@
 
 # Invoke predict.py on data preprocessed by prepare.sh
 
-#SBATCH --account=project_462000353
-#SBATCH --partition=small-g
+#SBATCH --job-name=hplt-registers
 #SBATCH --nodes=1
-#SBATCH --ntasks=8
-#SBATCH --cpus-per-task=2
-#SBATCH --mem-per-cpu=16G
 #SBATCH --gres=gpu:mi250:8
-#SBATCH --time=2-00:00:00
+#SBATCH --ntasks=8
+#SBATCH --mem=128G
+#SBATCH --cpus-per-task=8
+#SBATCH --time=12:00:00
 #SBATCH --output=slurm-logs/%j.out
 #SBATCH --error=slurm-logs/%j.err
+#SBATCH --account=project_462000353
+#SBATCH --partition=small-g
 
 # If run without sbatch, invoke here
 if [ -z $SLURM_JOB_ID ]; then
@@ -59,6 +60,7 @@ for i in `seq 0 $((SPLIT_PARTS-1))`; do
     srun \
 	--ntasks=1 \
 	--gres=gpu:mi250:1 \
+    --mem=16G \ 
 	python3 predict.py \
 	"$SPLIT_DIR/0$i.jsonl" \
 	"$PREDICT_DIR/0$i.jsonl" \
