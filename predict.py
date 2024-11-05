@@ -1,7 +1,6 @@
 import os
 import json
 import torch
-from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import time
 
@@ -9,15 +8,10 @@ import time
 MAX_LENGTH = 512
 
 # Set up model for speed and precision
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda")
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.set_float32_matmul_precision("high")
 torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
-
-
-def get_output_filename(input_file):
-    dir_path, base_name = os.path.split(input_file)
-    return os.path.join(dir_path, base_name.replace(".jsonl", "_register_labels.jsonl"))
 
 
 def process_large_file(input_file, chunk_size):
@@ -39,9 +33,7 @@ def process_large_file(input_file, chunk_size):
             yield chunk
 
 
-def process_chunk(
-    chunk, threshold, token_limit, batch_size, tokenizer, model, id2label
-):
+def process_chunk(chunk, batch_size, tokenizer, model, id2label):
     """Process each chunk, predict labels, and save results in original order."""
     results = []
     for i in range(0, len(chunk), batch_size):
@@ -63,9 +55,6 @@ def process_chunk(
         # Move the tokenized batch to the device
         encodings = {key: tensor.to(device) for key, tensor in encodings.items()}
 
-        # Compute the length of each tokenized text (number of tokens before padding)
-        input_lengths = encodings["attention_mask"].sum(dim=1).cpu().tolist()
-
         # Run the model on the batch and get logits
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             outputs = model(**encodings)
@@ -75,26 +64,14 @@ def process_chunk(
         probs = torch.sigmoid(logits).cpu().tolist()
 
         # Store each result with its original index to maintain order
-        for id_, idx, prob, input_length in zip(
-            ids, original_indices, probs, input_lengths
-        ):
+        for id_, idx, prob in zip(ids, original_indices, probs):
             # Create a dictionary of register names and their probabilities
             register_probs = {id2label[str(i)]: round(p, 4) for i, p in enumerate(prob)}
-
-            # If the text is shorter than the token limit, no registers are assigned
-            if input_length < token_limit:
-                registers = []
-            else:
-                # Determine which registers have a probability >= threshold
-                registers = [
-                    register for register, p in register_probs.items() if p >= threshold
-                ]
 
             results.append(
                 {
                     "original_index": idx,
                     "id": id_,
-                    "registers": registers,
                     "register_probabilities": register_probs,
                 }
             )
@@ -104,7 +81,6 @@ def process_chunk(
     return [
         {
             "id": result["id"],
-            "registers": result["registers"],
             "register_probabilities": result["register_probabilities"],
         }
         for result in results
@@ -113,7 +89,7 @@ def process_chunk(
 
 def main(args):
     # Load tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
+    tokenizer = AutoTokenizer.from_pretrained(args.base_model)
     model = AutoModelForSequenceClassification.from_pretrained(args.model_dir)
     model.to(device)
     model = torch.compile(
@@ -137,8 +113,6 @@ def main(args):
 
             results = process_chunk(
                 chunk,
-                args.threshold,
-                args.token_limit,
                 args.batch_size,
                 tokenizer,
                 model,
@@ -159,7 +133,7 @@ def main(args):
                 total_items / total_time if total_time > 0 else float("inf")
             )
 
-            # Log progress every 100 chunks instead of on every iteration
+            # Log progress every 100 chunks
             if chunk_idx % 100 == 0:
                 print(
                     f"Chunk {chunk_idx}: Throughput = {throughput:.2f} items/s, "
@@ -174,22 +148,16 @@ if __name__ == "__main__":
     parser.add_argument("input_file", type=str, help="Path to the input jsonl file.")
     parser.add_argument("output_file", type=str, help="Path to the output jsonl file.")
     parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.4,
-        help="Threshold for register probability.",
-    )
-    parser.add_argument(
-        "--token_limit",
-        type=int,
-        default=10,
-        help="Minimum number of tokens required to assign registers.",
-    )
-    parser.add_argument(
         "--model_dir",
         type=str,
         default="models/xlm-roberta-base",
         help="Path to the model directory.",
+    )
+    parser.add_argument(
+        "--base_model",
+        type=str,
+        default="xlm-roberta-base",
+        help="Base model.",
     )
     parser.add_argument(
         "--batch_size",
