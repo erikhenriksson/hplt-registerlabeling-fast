@@ -60,7 +60,7 @@ for i in `seq 0 $((SPLIT_PARTS-1))`; do
     srun \
 	--ntasks=1 \
 	--gres=gpu:mi250:1 \
-    --mem=16G \ 
+    --mem=16G \
 	python3 predict.py \
 	"$SPLIT_DIR/0$i.jsonl" \
 	"$PREDICT_DIR/0$i.jsonl" \
