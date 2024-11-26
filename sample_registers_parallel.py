@@ -147,7 +147,7 @@ def process_single_pair(
                     continue
 
                 # Log progress every 10000 lines
-                if i > 0 and i % 10000 == 0:
+                if i > 0 and i % 50000 == 0:
                     # Update shared counts
                     with token_update_lock:
                         with completion_lock:
