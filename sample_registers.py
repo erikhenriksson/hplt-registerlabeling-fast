@@ -9,7 +9,6 @@ BASE_DIR_TEXT = f"{ROOT_DIR}/splits/deduplicated/{LANG}"
 BASE_DIR_PRED = f"{ROOT_DIR}/predictions/deduplicated/{LANG}"
 OUTPUT_DIR = f"{ROOT_DIR}/samples-30B-by-register"
 LABEL_HIERARCHY = {
-    "MT": [],
     "LY": [],
     "SP": ["it"],
     "ID": [],
@@ -19,9 +18,13 @@ LABEL_HIERARCHY = {
     "OP": ["rv", "ob", "rs", "av"],
     "IP": ["ds", "ed"],
 }
+
+# Separate exclusion list
+EXCLUDED_REGISTERS = {"fi", "ed", "ra", "LY", "it", "SP", "av"}
+
 THRESHOLD = 0.4
 TOKEN_RATIO = 0.75
-TARGET_TOKENS = 500  # Changed from 30B for testing
+TARGET_TOKENS = 500
 PACKAGES = 160
 
 # Token counters and completed registers
@@ -30,23 +33,25 @@ completed_registers = set()
 
 
 def get_all_possible_registers():
-    """Get a set of all possible registers (parents and children)."""
+    """Get a set of all possible registers (parents and children), excluding the filtered ones."""
     all_registers = set(LABEL_HIERARCHY.keys())
     for children in LABEL_HIERARCHY.values():
         all_registers.update(children)
-    return all_registers
+    return all_registers - EXCLUDED_REGISTERS
 
 
 # Initialize the output directory and token counters
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 for label in LABEL_HIERARCHY:
-    os.makedirs(os.path.join(OUTPUT_DIR, label), exist_ok=True)
-    for sub in LABEL_HIERARCHY[label]:
-        os.makedirs(os.path.join(OUTPUT_DIR, sub), exist_ok=True)
+    if label not in EXCLUDED_REGISTERS:
+        os.makedirs(os.path.join(OUTPUT_DIR, label), exist_ok=True)
+        for sub in LABEL_HIERARCHY[label]:
+            if sub not in EXCLUDED_REGISTERS:
+                os.makedirs(os.path.join(OUTPUT_DIR, sub), exist_ok=True)
 
 
 def check_completion_status():
-    """Check if all registers have reached their target tokens."""
+    """Check if all non-excluded registers have reached their target tokens."""
     all_registers = get_all_possible_registers()
     for register in all_registers:
         if tokens_per_register[register] >= TARGET_TOKENS:
@@ -71,8 +76,10 @@ def process_files():
             # Check completion status before processing each file
             if check_completion_status():
                 print("Sampling complete. Final token counts:")
-                for register, tokens in tokens_per_register.items():
-                    print(f"{register}: {tokens}/{TARGET_TOKENS} tokens")
+                for register in sorted(get_all_possible_registers()):
+                    print(
+                        f"{register}: {tokens_per_register[register]}/{TARGET_TOKENS} tokens"
+                    )
                 return
 
             with open(file_text, "r") as f_text, open(file_pred, "r") as f_pred:
@@ -81,17 +88,20 @@ def process_files():
 
                     if i % 1000 == 0:
                         print("\nToken counts per register:")
-                        for register, tokens in tokens_per_register.items():
-                            print(f"{register}: {tokens}/{TARGET_TOKENS} tokens")
+                        for register in sorted(get_all_possible_registers()):
+                            print(
+                                f"{register}: {tokens_per_register[register]}/{TARGET_TOKENS} tokens"
+                            )
                         print(
                             f"Completed registers: {len(completed_registers)}/{len(get_all_possible_registers())}"
                         )
 
-                        # Check completion status periodically
                         if check_completion_status():
                             print("\nSampling complete. Final token counts:")
-                            for register, tokens in tokens_per_register.items():
-                                print(f"{register}: {tokens}/{TARGET_TOKENS} tokens")
+                            for register in sorted(get_all_possible_registers()):
+                                print(
+                                    f"{register}: {tokens_per_register[register]}/{TARGET_TOKENS} tokens"
+                                )
                             return
 
 
@@ -113,9 +123,11 @@ def process_line(line_text, line_pred):
         word_count = len(text.split())
         tokens = int(word_count / TOKEN_RATIO)
 
-        # Step 1: Binarize probabilities
+        # Step 1: Binarize probabilities and filter out excluded registers
         active_labels = [
-            label for label, prob in register_probs.items() if prob >= THRESHOLD
+            label
+            for label, prob in register_probs.items()
+            if prob >= THRESHOLD and label not in EXCLUDED_REGISTERS
         ]
 
         # Step 2: Check conditions for saving
@@ -148,7 +160,7 @@ def check_parent_child(active_labels):
     for parent, children in LABEL_HIERARCHY.items():
         if parent in active_labels:
             for child in children:
-                if child in active_labels:
+                if child in active_labels and child not in EXCLUDED_REGISTERS:
                     return child
     return None
 
