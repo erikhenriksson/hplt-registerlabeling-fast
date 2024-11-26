@@ -87,7 +87,7 @@ def process_files():
                 for i, (line_text, line_pred) in enumerate(zip(f_text, f_pred)):
                     process_line(line_text, line_pred)
 
-                    if i % 1000 == 0:
+                    if i % 10000 == 0:
                         print("\nToken counts per register:")
                         for register in sorted(get_all_possible_registers()):
                             print(
