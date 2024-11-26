@@ -35,6 +35,7 @@ PACKAGES = 160
 # Add locks for printing and file writing
 print_lock = mp.Lock()
 file_locks = {}
+dict_lock = mp.Lock()  # New lock for dictionary operations
 
 
 def get_all_possible_registers():
@@ -144,7 +145,7 @@ def process_single_directory(dir_num, manager_dict):
                     # Check the token count before acquiring any locks
                     if len(active_labels) == 1:
                         label = active_labels[0]
-                        with manager_dict.get_lock():
+                        with dict_lock:  # Use the dedicated dict_lock
                             if manager_dict[label] < TARGET_TOKENS:
                                 manager_dict[label] += tokens
                                 # Only save if we actually updated the count
@@ -153,7 +154,7 @@ def process_single_directory(dir_num, manager_dict):
                     elif len(active_labels) == 2:
                         child = check_parent_child(active_labels)
                         if child:
-                            with manager_dict.get_lock():
+                            with dict_lock:  # Use the dedicated dict_lock
                                 if manager_dict[child] < TARGET_TOKENS:
                                     manager_dict[child] += tokens
                                     # Only save if we actually updated the count
