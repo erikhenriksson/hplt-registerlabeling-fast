@@ -9,7 +9,7 @@ BASE_DIR_TEXT = f"{ROOT_DIR}/splits/deduplicated/{LANG}"
 BASE_DIR_PRED = f"{ROOT_DIR}/predictions/deduplicated/{LANG}"
 OUTPUT_DIR = f"{ROOT_DIR}/samples-30B-by-register"
 LABEL_HIERARCHY = {
-    "MT": [],
+    # "MT": [],
     "LY": [],
     "SP": ["it"],
     "ID": [],
@@ -45,7 +45,7 @@ def process_files():
             continue
 
         for file_num in range(8):
-            print(tokens_per_register)
+
             file_text = os.path.join(dir_path_text, f"0{file_num}.jsonl")
             file_pred = os.path.join(dir_path_pred, f"0{file_num}.jsonl")
             if not os.path.exists(file_text) or not os.path.exists(file_pred):
@@ -59,9 +59,12 @@ def process_files():
                 return  # Exit early if all sampling is complete
 
             with open(file_text, "r") as f_text, open(file_pred, "r") as f_pred:
+                i = 0
                 for line_text, line_pred in zip(f_text, f_pred):
                     process_line(line_text, line_pred)
-
+                    if i % 1000 == 0:
+                        print(tokens_per_register)
+                    i += 1
                     # Stop processing if all registers are done
                     if len(completed_registers) == len(LABEL_HIERARCHY) + sum(
                         len(v) for v in LABEL_HIERARCHY.values()
