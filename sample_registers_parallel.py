@@ -209,6 +209,7 @@ def process_single_pair(
 
 
 def main():
+    print("Starting register sampling...", flush=True)
     # Initialize shared state
     manager = Manager()
     shared_tokens = manager.dict()
