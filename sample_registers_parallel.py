@@ -4,7 +4,7 @@ from collections import defaultdict
 import multiprocessing as mp
 from functools import partial
 import math
-from multiprocessing import Manager, Lock, Value
+from multiprocessing import Manager
 import fcntl
 import time
 from datetime import datetime
@@ -56,14 +56,7 @@ def check_parent_child(active_labels):
 
 def process_single_file(args):
     """Process a single file pair and return the results."""
-    (
-        file_text,
-        file_pred,
-        shared_token_counts,
-        token_lock,
-        processed_files,
-        total_files,
-    ) = args
+    file_text, file_pred, shared_dict = args
     local_results = defaultdict(list)
 
     try:
@@ -105,9 +98,13 @@ def process_single_file(args):
                         target_label = check_parent_child(active_labels)
 
                     if target_label:
-                        with token_lock:
-                            if shared_token_counts[target_label] < TARGET_TOKENS:
-                                shared_token_counts[target_label] += tokens
+                        # Using the manager's dict for synchronization
+                        with shared_dict["lock"]:
+                            if (
+                                shared_dict["token_counts"][target_label]
+                                < TARGET_TOKENS
+                            ):
+                                shared_dict["token_counts"][target_label] += tokens
                                 local_results[target_label].append(
                                     {
                                         "text": text,
@@ -119,20 +116,20 @@ def process_single_file(args):
                     print(f"Error processing line in {file_text}: {e}")
 
         end_time = time.time()
-        with processed_files.get_lock():
-            processed_files.value += 1
-            current = processed_files.value
+        with shared_dict["lock"]:
+            shared_dict["processed_files"] += 1
+            current = shared_dict["processed_files"]
 
         print(
-            f"Completed {os.path.basename(file_text)} ({current}/{total_files.value}) in {end_time - start_time:.2f} seconds"
+            f"Completed {os.path.basename(file_text)} ({current}/{shared_dict['total_files']}) in {end_time - start_time:.2f} seconds"
         )
 
         # Print current token counts every time a file is completed
-        with token_lock:
+        with shared_dict["lock"]:
             print("\nCurrent token counts:")
-            for register in sorted(shared_token_counts.keys()):
+            for register in sorted(shared_dict["token_counts"].keys()):
                 print(
-                    f"{register}: {shared_token_counts[register]}/{TARGET_TOKENS} tokens"
+                    f"{register}: {shared_dict['token_counts'][register]}/{TARGET_TOKENS} tokens"
                 )
 
     except Exception as e:
@@ -171,13 +168,17 @@ def main():
 
     # Create a manager for shared state
     manager = Manager()
-    shared_token_counts = manager.dict()
-    token_lock = manager.Lock()
-    processed_files = Value("i", 0)  # Shared counter for processed files
-    total_files = Value("i", 0)  # Total number of files to process
+    shared_dict = manager.dict(
+        {
+            "token_counts": manager.dict(),
+            "processed_files": 0,
+            "total_files": 0,
+            "lock": manager.Lock(),
+        }
+    )
 
     for register in all_registers:
-        shared_token_counts[register] = 0
+        shared_dict["token_counts"][register] = 0
 
     # Collect all file pairs to process
     file_pairs = []
@@ -193,18 +194,9 @@ def main():
             file_pred = os.path.join(dir_path_pred, f"0{file_num}.jsonl")
 
             if os.path.exists(file_text) and os.path.exists(file_pred):
-                file_pairs.append(
-                    (
-                        file_text,
-                        file_pred,
-                        shared_token_counts,
-                        token_lock,
-                        processed_files,
-                        total_files,
-                    )
-                )
+                file_pairs.append((file_text, file_pred, shared_dict))
 
-    total_files.value = len(file_pairs)
+    shared_dict["total_files"] = len(file_pairs)
 
     # Process files in parallel
     num_cpus = min(64, mp.cpu_count())  # Use minimum of 64 or available CPUs
@@ -225,7 +217,9 @@ def main():
     print(f"\nProcessing completed at {datetime.now()}")
     print("\nFinal token counts:")
     for register in sorted(all_registers):
-        print(f"{register}: {shared_token_counts[register]}/{TARGET_TOKENS} tokens")
+        print(
+            f"{register}: {shared_dict['token_counts'][register]}/{TARGET_TOKENS} tokens"
+        )
 
 
 if __name__ == "__main__":
