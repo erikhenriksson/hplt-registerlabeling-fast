@@ -4,7 +4,10 @@ from collections import defaultdict
 import multiprocessing as mp
 from functools import partial
 import math
-from multiprocessing import Manager
+from multiprocessing import Manager, Lock, Value
+import fcntl
+import time
+from datetime import datetime
 
 # Configuration
 ROOT_DIR = "/scratch/project_462000353/HPLT-REGISTERS"
@@ -53,12 +56,27 @@ def check_parent_child(active_labels):
 
 def process_single_file(args):
     """Process a single file pair and return the results."""
-    file_text, file_pred, token_counts, lock = args
+    (
+        file_text,
+        file_pred,
+        shared_token_counts,
+        token_lock,
+        processed_files,
+        total_files,
+    ) = args
     local_results = defaultdict(list)
 
     try:
+        print(f"Starting processing of {os.path.basename(file_text)}")
+        start_time = time.time()
+
         with open(file_text, "r") as f_text, open(file_pred, "r") as f_pred:
-            for line_text, line_pred in zip(f_text, f_pred):
+            for line_num, (line_text, line_pred) in enumerate(zip(f_text, f_pred)):
+                if line_num % 10000 == 0:  # Progress update every 10000 lines
+                    print(
+                        f"File {os.path.basename(file_text)}: processed {line_num} lines"
+                    )
+
                 try:
                     data_text = json.loads(line_text)
                     data_pred = json.loads(line_pred)
@@ -87,10 +105,9 @@ def process_single_file(args):
                         target_label = check_parent_child(active_labels)
 
                     if target_label:
-                        with lock:
-                            current_count = token_counts[target_label]
-                            if current_count < TARGET_TOKENS:
-                                token_counts[target_label] = current_count + tokens
+                        with token_lock:
+                            if shared_token_counts[target_label] < TARGET_TOKENS:
+                                shared_token_counts[target_label] += tokens
                                 local_results[target_label].append(
                                     {
                                         "text": text,
@@ -101,6 +118,23 @@ def process_single_file(args):
                 except Exception as e:
                     print(f"Error processing line in {file_text}: {e}")
 
+        end_time = time.time()
+        with processed_files.get_lock():
+            processed_files.value += 1
+            current = processed_files.value
+
+        print(
+            f"Completed {os.path.basename(file_text)} ({current}/{total_files.value}) in {end_time - start_time:.2f} seconds"
+        )
+
+        # Print current token counts every time a file is completed
+        with token_lock:
+            print("\nCurrent token counts:")
+            for register in sorted(shared_token_counts.keys()):
+                print(
+                    f"{register}: {shared_token_counts[register]}/{TARGET_TOKENS} tokens"
+                )
+
     except Exception as e:
         print(f"Error processing file {file_text}: {e}")
 
@@ -110,28 +144,40 @@ def process_single_file(args):
 def save_results(results, output_dir):
     """Save the accumulated results to files."""
     for register, samples in results.items():
+        if not samples:
+            continue
+
         output_path = os.path.join(output_dir, register, "eng_Latn.jsonl")
         os.makedirs(os.path.join(output_dir, register), exist_ok=True)
+
+        print(f"Saving {len(samples)} samples to {output_path}")
         with open(output_path, "a") as f_out:
-            for sample in samples:
-                f_out.write(json.dumps(sample) + "\n")
+            fcntl.flock(f_out.fileno(), fcntl.LOCK_EX)
+            try:
+                for sample in samples:
+                    f_out.write(json.dumps(sample) + "\n")
+            finally:
+                fcntl.flock(f_out.fileno(), fcntl.LOCK_UN)
 
 
 def main():
+    print(f"Starting processing at {datetime.now()}")
+
     # Create output directories
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     all_registers = get_all_possible_registers()
     for register in all_registers:
         os.makedirs(os.path.join(OUTPUT_DIR, register), exist_ok=True)
 
-    # Create a manager and shared dictionary
+    # Create a manager for shared state
     manager = Manager()
-    token_counts = manager.dict()
-    lock = manager.Lock()
+    shared_token_counts = manager.dict()
+    token_lock = manager.Lock()
+    processed_files = Value("i", 0)  # Shared counter for processed files
+    total_files = Value("i", 0)  # Total number of files to process
 
-    # Initialize token counts
     for register in all_registers:
-        token_counts[register] = 0
+        shared_token_counts[register] = 0
 
     # Collect all file pairs to process
     file_pairs = []
@@ -147,27 +193,39 @@ def main():
             file_pred = os.path.join(dir_path_pred, f"0{file_num}.jsonl")
 
             if os.path.exists(file_text) and os.path.exists(file_pred):
-                file_pairs.append((file_text, file_pred, token_counts, lock))
+                file_pairs.append(
+                    (
+                        file_text,
+                        file_pred,
+                        shared_token_counts,
+                        token_lock,
+                        processed_files,
+                        total_files,
+                    )
+                )
+
+    total_files.value = len(file_pairs)
 
     # Process files in parallel
-    num_cpus = 32  # Or mp.cpu_count() for all available CPUs
-    chunk_size = max(
-        1, len(file_pairs) // (num_cpus * 4)
-    )  # Adjust chunk size based on number of CPUs
+    num_cpus = min(64, mp.cpu_count())  # Use minimum of 64 or available CPUs
+    chunk_size = 1  # Process one file at a time for better progress tracking
 
     print(f"Processing {len(file_pairs)} file pairs using {num_cpus} CPUs")
+    print(f"Chunk size: {chunk_size}")
 
     with mp.Pool(num_cpus) as pool:
         results_list = pool.map(process_single_file, file_pairs, chunksize=chunk_size)
+
+    print(f"\nAll files processed. Saving final results at {datetime.now()}")
 
     # Combine and save results
     for partial_results in results_list:
         save_results(partial_results, OUTPUT_DIR)
 
-    # Print final token counts
+    print(f"\nProcessing completed at {datetime.now()}")
     print("\nFinal token counts:")
     for register in sorted(all_registers):
-        print(f"{register}: {token_counts[register]}/{TARGET_TOKENS} tokens")
+        print(f"{register}: {shared_token_counts[register]}/{TARGET_TOKENS} tokens")
 
 
 if __name__ == "__main__":
