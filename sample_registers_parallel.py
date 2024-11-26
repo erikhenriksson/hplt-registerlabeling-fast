@@ -147,7 +147,7 @@ def main():
                 file_pairs.append((file_text, file_pred, shared_token_counts))
 
     # Process files in parallel
-    num_cpus = 64  # Or mp.cpu_count() for all available CPUs
+    num_cpus = mp.cpu_count() - 1
     chunk_size = max(
         1, len(file_pairs) // (num_cpus * 4)
     )  # Adjust chunk size based on number of CPUs
