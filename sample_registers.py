@@ -22,7 +22,7 @@ LABEL_HIERARCHY = {
 
 # Separate exclusion list
 EXCLUDED_REGISTERS = {"fi", "ed", "ra", "LY", "it", "SP", "av"}
-
+TEXT_MIN_LENGTH = 50
 THRESHOLD = 0.4
 TOKEN_RATIO = 0.75
 TARGET_TOKENS = 30_000_000_000
@@ -117,7 +117,7 @@ def process_line(line_text, line_pred):
         assert data_pred["id"] == data_text["id"], "id mismatch"
 
         # Exclude short text
-        if len(text) < 10:
+        if len(text) < TEXT_MIN_LENGTH:
             return
 
         # Calculate word count and tokens
