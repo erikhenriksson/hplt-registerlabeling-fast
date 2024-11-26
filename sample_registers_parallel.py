@@ -160,16 +160,30 @@ def process_single_pair(
                                     completed_list.append(label)
                             local_updates.clear()
 
-                            # Print progress
+                            # Print progress with percentages
                             print("\nToken counts per register:")
                             completed_set = set(completed_list)
-                            for register in sorted(get_all_possible_registers()):
-                                print(
-                                    f"{register}: {shared_tokens[register]}/{TARGET_TOKENS} tokens"
-                                )
-                            print(
-                                f"Completed registers: {len(completed_set)}/{len(get_all_possible_registers())}"
+
+                            # Calculate total progress across all registers
+                            all_registers = sorted(get_all_possible_registers())
+                            total_tokens = sum(
+                                shared_tokens[reg] for reg in all_registers
                             )
+                            overall_progress = (
+                                total_tokens / (TARGET_TOKENS * len(all_registers))
+                            ) * 100
+
+                            # Print individual register progress
+                            for register in all_registers:
+                                percentage = (
+                                    shared_tokens[register] / TARGET_TOKENS
+                                ) * 100
+                                print(f"{register}: {percentage:.2f}%")
+
+                            print(
+                                f"\nCompleted registers: {len(completed_set)}/{len(get_all_possible_registers())}"
+                            )
+                            print(f"Complete progress: {overall_progress:.2f}%")
 
                             # Check if all registers are complete
                             if len(completed_set) == len(get_all_possible_registers()):
