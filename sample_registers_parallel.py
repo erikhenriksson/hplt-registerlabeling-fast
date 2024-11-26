@@ -25,13 +25,13 @@ LABEL_HIERARCHY = {
 }
 
 # Constants
-EXCLUDED_REGISTERS = {"fi", "ed", "ra", "LY", "it", "SP", "av"}
+EXCLUDED_REGISTERS = {}
 TEXT_MIN_LENGTH = 50
 THRESHOLD = 0.4
 TOKEN_RATIO = 0.75
 TARGET_TOKENS = 30_000_000_000
 PACKAGES = 160
-NUM_PROCESSES = 64  # Number of CPU cores to use
+NUM_PROCESSES = 128  # Number of CPU cores to use
 
 
 def get_all_possible_registers():
