@@ -54,7 +54,9 @@ def check_parent_child(active_labels):
 
 def process_file_pair(args):
     """Process a single pair of text and prediction files."""
-    file_text, file_pred, shared_tokens, shared_completed, file_locks = args
+    file_text, file_pred, shared_tokens, completed_list, completed_lock, file_locks = (
+        args
+    )
     local_updates = defaultdict(int)
 
     try:
@@ -90,29 +92,31 @@ def process_file_pair(args):
                     if label_to_save:
                         # Check if we should process this label
                         with shared_tokens.get_lock():
-                            if (
-                                label_to_save not in shared_completed
-                                and shared_tokens[label_to_save] < TARGET_TOKENS
-                            ):
-                                local_updates[label_to_save] += tokens
+                            with completed_lock:
+                                completed_set = set(completed_list)
+                                if (
+                                    label_to_save not in completed_set
+                                    and shared_tokens[label_to_save] < TARGET_TOKENS
+                                ):
+                                    local_updates[label_to_save] += tokens
 
-                                # Save the sample with minimal locking
-                                output_path = os.path.join(
-                                    OUTPUT_DIR, label_to_save, "eng_Latn.jsonl"
-                                )
-                                file_lock = file_locks[label_to_save]
+                                    # Save the sample with minimal locking
+                                    output_path = os.path.join(
+                                        OUTPUT_DIR, label_to_save, "eng_Latn.jsonl"
+                                    )
+                                    file_lock = file_locks[label_to_save]
 
-                                with file_lock:
-                                    with open(output_path, "a") as f_out:
-                                        f_out.write(
-                                            json.dumps(
-                                                {
-                                                    "text": text,
-                                                    "register_probabilities": register_probs,
-                                                }
+                                    with file_lock:
+                                        with open(output_path, "a") as f_out:
+                                            f_out.write(
+                                                json.dumps(
+                                                    {
+                                                        "text": text,
+                                                        "register_probabilities": register_probs,
+                                                    }
+                                                )
+                                                + "\n"
                                             )
-                                            + "\n"
-                                        )
 
                 except Exception as e:
                     print(f"Error processing line: {e}")
@@ -122,32 +126,41 @@ def process_file_pair(args):
                 if i > 0 and i % 10000 == 0:
                     # Update shared counts
                     with shared_tokens.get_lock():
-                        for label, count in local_updates.items():
-                            shared_tokens[label] += count
-                            if shared_tokens[label] >= TARGET_TOKENS:
-                                shared_completed.add(label)
-                        local_updates.clear()
+                        with completed_lock:
+                            for label, count in local_updates.items():
+                                shared_tokens[label] += count
+                                if (
+                                    shared_tokens[label] >= TARGET_TOKENS
+                                    and label not in completed_list
+                                ):
+                                    completed_list.append(label)
+                            local_updates.clear()
 
-                        # Print progress
-                        print("\nToken counts per register:")
-                        for register in sorted(get_all_possible_registers()):
+                            # Print progress
+                            print("\nToken counts per register:")
+                            completed_set = set(completed_list)
+                            for register in sorted(get_all_possible_registers()):
+                                print(
+                                    f"{register}: {shared_tokens[register]}/{TARGET_TOKENS} tokens"
+                                )
                             print(
-                                f"{register}: {shared_tokens[register]}/{TARGET_TOKENS} tokens"
+                                f"Completed registers: {len(completed_set)}/{len(get_all_possible_registers())}"
                             )
-                        print(
-                            f"Completed registers: {len(shared_completed)}/{len(get_all_possible_registers())}"
-                        )
 
-                        # Check if all registers are complete
-                        if len(shared_completed) == len(get_all_possible_registers()):
-                            return
+                            # Check if all registers are complete
+                            if len(completed_set) == len(get_all_possible_registers()):
+                                return
 
             # Final update for remaining tokens
             with shared_tokens.get_lock():
-                for label, count in local_updates.items():
-                    shared_tokens[label] += count
-                    if shared_tokens[label] >= TARGET_TOKENS:
-                        shared_completed.add(label)
+                with completed_lock:
+                    for label, count in local_updates.items():
+                        shared_tokens[label] += count
+                        if (
+                            shared_tokens[label] >= TARGET_TOKENS
+                            and label not in completed_list
+                        ):
+                            completed_list.append(label)
 
     except Exception as e:
         print(f"Error processing file {file_text}: {e}")
@@ -157,7 +170,8 @@ def main():
     # Initialize shared state
     manager = Manager()
     shared_tokens = manager.dict()
-    shared_completed = manager.set()
+    completed_list = manager.list()  # Using list instead of set
+    completed_lock = manager.Lock()  # Lock for the completed list
     file_locks = {register: manager.Lock() for register in get_all_possible_registers()}
 
     # Initialize the output directory and token counters
@@ -181,7 +195,14 @@ def main():
 
             if os.path.exists(file_text) and os.path.exists(file_pred):
                 file_pairs.append(
-                    (file_text, file_pred, shared_tokens, shared_completed, file_locks)
+                    (
+                        file_text,
+                        file_pred,
+                        shared_tokens,
+                        completed_list,
+                        completed_lock,
+                        file_locks,
+                    )
                 )
 
     # Process files in parallel
