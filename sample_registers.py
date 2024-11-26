@@ -56,12 +56,13 @@ def process_files():
                 len(v) for v in LABEL_HIERARCHY.values()
             ):
                 print("Sampling complete")
-                return  # Exit early if all sampling is complete
+                exit()  # Exit early if all sampling is complete
 
             with open(file_text, "r") as f_text, open(file_pred, "r") as f_pred:
                 i = 0
                 for line_text, line_pred in zip(f_text, f_pred):
                     process_line(line_text, line_pred)
+                    print("completed_registers", len(completed_registers))
                     if i % 1000 == 0:
                         print(tokens_per_register)
                     i += 1
@@ -69,7 +70,8 @@ def process_files():
                     if len(completed_registers) == len(LABEL_HIERARCHY) + sum(
                         len(v) for v in LABEL_HIERARCHY.values()
                     ):
-                        return
+                        print("Sampling complete")
+                        exit()
 
 
 def process_line(line_text, line_pred):
@@ -97,19 +99,20 @@ def process_line(line_text, line_pred):
 
         # Step 2: Check conditions for saving
         if len(active_labels) == 1:
-            # Single active label - save for this register
-            save_sample(active_labels[0], text, register_probs)
-            tokens_per_register[active_labels[0]] += tokens
-            if tokens_per_register[active_labels[0]] >= TARGET_TOKENS:
+            if tokens_per_register[active_labels[0]] < TARGET_TOKENS:
+                tokens_per_register[active_labels[0]] += tokens
+                save_sample(active_labels[0], text, register_probs)
+            else:
                 completed_registers.add(active_labels[0])
 
         elif len(active_labels) == 2:
             # Check if it's a valid parent-child pair
             parent_child = check_parent_child(active_labels)
             if parent_child:
-                save_sample(parent_child, text, register_probs)
-                tokens_per_register[parent_child] += tokens
-                if tokens_per_register[parent_child] >= TARGET_TOKENS:
+                if tokens_per_register[parent_child] < TARGET_TOKENS:
+                    save_sample(parent_child, text, register_probs)
+                    tokens_per_register[parent_child] += tokens
+                else:
                     completed_registers.add(parent_child)
 
     except Exception as e:
