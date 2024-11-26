@@ -11,7 +11,7 @@ ROOT_DIR = "/scratch/project_462000353/HPLT-REGISTERS"
 LANG = "eng_Latn"
 BASE_DIR_TEXT = f"{ROOT_DIR}/splits/deduplicated/{LANG}"
 BASE_DIR_PRED = f"{ROOT_DIR}/predictions/deduplicated/{LANG}"
-OUTPUT_DIR = f"{ROOT_DIR}/samples-30B-by-register"
+OUTPUT_DIR = f"{ROOT_DIR}/samples-30B-by-register-parallelized"
 LABEL_HIERARCHY = {
     "MT": [],
     "LY": [],
