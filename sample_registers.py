@@ -9,6 +9,7 @@ BASE_DIR_TEXT = f"{ROOT_DIR}/splits/deduplicated/{LANG}"
 BASE_DIR_PRED = f"{ROOT_DIR}/predictions/deduplicated/{LANG}"
 OUTPUT_DIR = f"{ROOT_DIR}/samples-30B-by-register"
 LABEL_HIERARCHY = {
+    "MT": [],
     "LY": [],
     "SP": ["it"],
     "ID": [],
