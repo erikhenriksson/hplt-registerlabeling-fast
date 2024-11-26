@@ -25,7 +25,7 @@ EXCLUDED_REGISTERS = {"fi", "ed", "ra", "LY", "it", "SP", "av"}
 
 THRESHOLD = 0.4
 TOKEN_RATIO = 0.75
-TARGET_TOKENS = 500
+TARGET_TOKENS = 30_000_000_000
 PACKAGES = 160
 
 # Token counters and completed registers
