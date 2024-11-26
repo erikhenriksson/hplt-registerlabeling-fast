@@ -2,7 +2,7 @@ import os
 import json
 from collections import defaultdict
 import multiprocessing as mp
-from multiprocessing import Manager
+from multiprocessing import Manager, Lock
 from itertools import product
 import time
 
@@ -54,9 +54,15 @@ def check_parent_child(active_labels):
 
 def process_file_pair(args):
     """Process a single pair of text and prediction files."""
-    file_text, file_pred, shared_tokens, completed_list, completed_lock, file_locks = (
-        args
-    )
+    (
+        file_text,
+        file_pred,
+        shared_tokens,
+        shared_tokens_lock,
+        completed_list,
+        completed_lock,
+        file_locks,
+    ) = args
     local_updates = defaultdict(int)
 
     try:
@@ -91,7 +97,7 @@ def process_file_pair(args):
 
                     if label_to_save:
                         # Check if we should process this label
-                        with shared_tokens.get_lock():
+                        with shared_tokens_lock:
                             with completed_lock:
                                 completed_set = set(completed_list)
                                 if (
@@ -125,7 +131,7 @@ def process_file_pair(args):
                 # Log progress every 10000 lines
                 if i > 0 and i % 10000 == 0:
                     # Update shared counts
-                    with shared_tokens.get_lock():
+                    with shared_tokens_lock:
                         with completed_lock:
                             for label, count in local_updates.items():
                                 shared_tokens[label] += count
@@ -152,7 +158,7 @@ def process_file_pair(args):
                                 return
 
             # Final update for remaining tokens
-            with shared_tokens.get_lock():
+            with shared_tokens_lock:
                 with completed_lock:
                     for label, count in local_updates.items():
                         shared_tokens[label] += count
@@ -170,6 +176,7 @@ def main():
     # Initialize shared state
     manager = Manager()
     shared_tokens = manager.dict()
+    shared_tokens_lock = Lock()  # Separate lock for the shared dictionary
     completed_list = manager.list()  # Using list instead of set
     completed_lock = manager.Lock()  # Lock for the completed list
     file_locks = {register: manager.Lock() for register in get_all_possible_registers()}
@@ -199,6 +206,7 @@ def main():
                         file_text,
                         file_pred,
                         shared_tokens,
+                        shared_tokens_lock,
                         completed_list,
                         completed_lock,
                         file_locks,
