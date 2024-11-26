@@ -99,8 +99,6 @@ def process_line(line_text, line_pred):
             tokens_per_register[active_labels[0]] += tokens
             if tokens_per_register[active_labels[0]] >= TARGET_TOKENS:
                 completed_registers.add(active_labels[0])
-            else:
-                print(f"Completed register: {active_labels[0]}")
 
         elif len(active_labels) == 2:
             # Check if it's a valid parent-child pair
@@ -110,8 +108,6 @@ def process_line(line_text, line_pred):
                 tokens_per_register[parent_child] += tokens
                 if tokens_per_register[parent_child] >= TARGET_TOKENS:
                     completed_registers.add(parent_child)
-                else:
-                    print(f"Completed register: {parent_child}")
 
     except Exception as e:
         print(f"Error processing line: {e}")
