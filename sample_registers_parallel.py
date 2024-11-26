@@ -4,8 +4,7 @@ from collections import defaultdict
 import multiprocessing as mp
 from functools import partial
 import math
-from multiprocessing import Manager, Lock
-import fcntl
+from multiprocessing import Manager
 
 # Configuration
 ROOT_DIR = "/scratch/project_462000353/HPLT-REGISTERS"
@@ -54,7 +53,7 @@ def check_parent_child(active_labels):
 
 def process_single_file(args):
     """Process a single file pair and return the results."""
-    file_text, file_pred, shared_token_counts, token_lock = args
+    file_text, file_pred, shared_token_counts = args
     local_results = defaultdict(list)
 
     try:
@@ -89,7 +88,7 @@ def process_single_file(args):
 
                     if target_label:
                         # Check if we still need samples for this register
-                        with token_lock:
+                        with shared_token_counts.get_lock():
                             if shared_token_counts[target_label] < TARGET_TOKENS:
                                 shared_token_counts[target_label] += tokens
                                 local_results[target_label].append(
@@ -111,21 +110,11 @@ def process_single_file(args):
 def save_results(results, output_dir):
     """Save the accumulated results to files."""
     for register, samples in results.items():
-        if not samples:  # Skip if no samples for this register
-            continue
-
         output_path = os.path.join(output_dir, register, "eng_Latn.jsonl")
         os.makedirs(os.path.join(output_dir, register), exist_ok=True)
-
         with open(output_path, "a") as f_out:
-            # Acquire an exclusive lock on the file
-            fcntl.flock(f_out.fileno(), fcntl.LOCK_EX)
-            try:
-                for sample in samples:
-                    f_out.write(json.dumps(sample) + "\n")
-            finally:
-                # Release the lock
-                fcntl.flock(f_out.fileno(), fcntl.LOCK_UN)
+            for sample in samples:
+                f_out.write(json.dumps(sample) + "\n")
 
 
 def main():
@@ -138,8 +127,6 @@ def main():
     # Create a manager for shared state
     manager = Manager()
     shared_token_counts = manager.dict()
-    token_lock = manager.Lock()  # Create a separate lock for token counter updates
-
     for register in all_registers:
         shared_token_counts[register] = 0
 
@@ -157,9 +144,7 @@ def main():
             file_pred = os.path.join(dir_path_pred, f"0{file_num}.jsonl")
 
             if os.path.exists(file_text) and os.path.exists(file_pred):
-                file_pairs.append(
-                    (file_text, file_pred, shared_token_counts, token_lock)
-                )
+                file_pairs.append((file_text, file_pred, shared_token_counts))
 
     # Process files in parallel
     num_cpus = mp.cpu_count() - 1  # Or mp.cpu_count() for all available CPUs
