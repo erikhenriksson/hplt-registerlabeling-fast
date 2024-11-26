@@ -143,7 +143,7 @@ def process_single_pair(
                                             )
 
                 except Exception as e:
-                    print(f"Error processing line: {e}")
+                    print(f"Error processing line: {e}", flush=True)
                     continue
 
                 # Log progress every 10000 lines
@@ -161,7 +161,7 @@ def process_single_pair(
                             local_updates.clear()
 
                             # Print progress with percentages
-                            print("\nToken counts per register:")
+                            print("\nToken counts per register:", flush=True)
                             completed_set = set(completed_list)
 
                             # Calculate total progress across all registers
@@ -178,12 +178,16 @@ def process_single_pair(
                                 percentage = (
                                     shared_tokens[register] / TARGET_TOKENS
                                 ) * 100
-                                print(f"{register}: {percentage:.2f}%")
+                                print(f"{register}: {percentage:.2f}%", flush=True)
 
                             print(
-                                f"\nCompleted registers: {len(completed_set)}/{len(get_all_possible_registers())}"
+                                f"\nCompleted registers: {len(completed_set)}/{len(get_all_possible_registers())}",
+                                flush=True,
                             )
-                            print(f"Complete progress: {overall_progress:.2f}%")
+                            print(
+                                f"Complete progress: {overall_progress:.2f}%",
+                                flush=True,
+                            )
 
                             # Check if all registers are complete
                             if len(completed_set) == len(get_all_possible_registers()):
@@ -201,7 +205,7 @@ def process_single_pair(
                             completed_list.append(label)
 
     except Exception as e:
-        print(f"Error processing file {file_text}: {e}")
+        print(f"Error processing file {file_text}: {e}", flush=True)
 
 
 def main():
@@ -247,12 +251,14 @@ def main():
         pool.map(process_files_chunk, process_args)
 
     # Print final results
-    print("\nSampling complete. Final token counts:")
+    print("\nSampling complete. Final token counts:", flush=True)
     for register in sorted(get_all_possible_registers()):
-        print(f"{register}: {shared_tokens[register]}/{TARGET_TOKENS} tokens")
+        print(
+            f"{register}: {shared_tokens[register]}/{TARGET_TOKENS} tokens", flush=True
+        )
 
 
 if __name__ == "__main__":
     start_time = time.time()
     main()
-    print(f"\nTotal execution time: {time.time() - start_time:.2f} seconds")
+    print(f"\nTotal execution time: {time.time() - start_time:.2f} seconds", flush=True)
