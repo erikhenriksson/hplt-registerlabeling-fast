@@ -45,6 +45,7 @@ def process_files():
             continue
 
         for file_num in range(8):
+            print(tokens_per_register)
             file_text = os.path.join(dir_path_text, f"0{file_num}.jsonl")
             file_pred = os.path.join(dir_path_pred, f"0{file_num}.jsonl")
             if not os.path.exists(file_text) or not os.path.exists(file_pred):
@@ -98,6 +99,7 @@ def process_line(line_text, line_pred):
             tokens_per_register[active_labels[0]] += tokens
             if tokens_per_register[active_labels[0]] >= TARGET_TOKENS:
                 completed_registers.add(active_labels[0])
+            else:
                 print(f"Completed register: {active_labels[0]}")
 
         elif len(active_labels) == 2:
@@ -108,6 +110,7 @@ def process_line(line_text, line_pred):
                 tokens_per_register[parent_child] += tokens
                 if tokens_per_register[parent_child] >= TARGET_TOKENS:
                     completed_registers.add(parent_child)
+                else:
                     print(f"Completed register: {parent_child}")
 
     except Exception as e:
