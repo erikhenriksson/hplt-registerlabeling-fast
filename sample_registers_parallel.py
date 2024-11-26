@@ -4,7 +4,8 @@ from collections import defaultdict
 import multiprocessing as mp
 from functools import partial
 import math
-from multiprocessing import Manager
+from multiprocessing import Manager, Value, Lock
+from ctypes import c_longlong
 
 # Configuration
 ROOT_DIR = "/scratch/project_462000353/HPLT-REGISTERS"
@@ -53,7 +54,7 @@ def check_parent_child(active_labels):
 
 def process_single_file(args):
     """Process a single file pair and return the results."""
-    file_text, file_pred, shared_token_counts = args
+    file_text, file_pred, token_counters, register_locks = args
     local_results = defaultdict(list)
 
     try:
@@ -87,10 +88,13 @@ def process_single_file(args):
                         target_label = check_parent_child(active_labels)
 
                     if target_label:
-                        # Check if we still need samples for this register
-                        with shared_token_counts.get_lock():
-                            if shared_token_counts[target_label] < TARGET_TOKENS:
-                                shared_token_counts[target_label] += tokens
+                        # Use the lock for this register
+                        with register_locks[target_label]:
+                            current_count = token_counters[target_label].value
+                            if current_count < TARGET_TOKENS:
+                                token_counters[target_label].value = (
+                                    current_count + tokens
+                                )
                                 local_results[target_label].append(
                                     {
                                         "text": text,
@@ -124,11 +128,12 @@ def main():
     for register in all_registers:
         os.makedirs(os.path.join(OUTPUT_DIR, register), exist_ok=True)
 
-    # Create a manager for shared state
-    manager = Manager()
-    shared_token_counts = manager.dict()
+    # Create shared token counters and locks for each register
+    token_counters = {}
+    register_locks = {}
     for register in all_registers:
-        shared_token_counts[register] = 0
+        token_counters[register] = Value(c_longlong, 0)
+        register_locks[register] = Lock()
 
     # Collect all file pairs to process
     file_pairs = []
@@ -144,7 +149,9 @@ def main():
             file_pred = os.path.join(dir_path_pred, f"0{file_num}.jsonl")
 
             if os.path.exists(file_text) and os.path.exists(file_pred):
-                file_pairs.append((file_text, file_pred, shared_token_counts))
+                file_pairs.append(
+                    (file_text, file_pred, token_counters, register_locks)
+                )
 
     # Process files in parallel
     num_cpus = 32  # Or mp.cpu_count() for all available CPUs
@@ -164,7 +171,7 @@ def main():
     # Print final token counts
     print("\nFinal token counts:")
     for register in sorted(all_registers):
-        print(f"{register}: {shared_token_counts[register]}/{TARGET_TOKENS} tokens")
+        print(f"{register}: {token_counters[register].value}/{TARGET_TOKENS} tokens")
 
 
 if __name__ == "__main__":
