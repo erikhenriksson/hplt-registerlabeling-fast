@@ -7,7 +7,7 @@ STATS_BASE_DIR="stats"
 SPLIT_BASE_DIR="splits"
 LOCK_DIR="locks"
 LOG_BASE_DIR="logs"
-PREDICT_BASE_DIR="predicts"
+PREDICT_BASE_DIR="predictions"
 
 SPLIT_PARTS=8
 

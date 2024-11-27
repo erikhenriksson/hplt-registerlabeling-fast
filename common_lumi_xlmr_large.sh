@@ -7,7 +7,7 @@ STATS_BASE_DIR="stats"
 SPLIT_BASE_DIR="splits"
 LOCK_DIR="locks_xlmr_large"
 LOG_BASE_DIR="logs_xlmr_large"
-PREDICT_BASE_DIR="predicts_xlmr_large"
+PREDICT_BASE_DIR="predictions_xlmr_large"
 
 SPLIT_PARTS=8
 
