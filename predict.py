@@ -66,7 +66,8 @@ def process_chunk(chunk, batch_size, tokenizer, model, id2label):
         # Store each result with its original index to maintain order
         for id_, idx, prob in zip(ids, original_indices, probs):
             # Create a dictionary of register names and their probabilities
-            register_probs = {id2label[str(i)]: round(p, 4) for i, p in enumerate(prob)}
+            # register_probs = {id2label[str(i)]: round(p, 4) for i, p in enumerate(prob)}
+            register_probs = {id2label[i]: round(p, 4) for i, p in enumerate(prob)}
 
             results.append(
                 {
