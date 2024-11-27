@@ -109,8 +109,6 @@ def main(args):
     # id2label = config["id2label"]
     id2label = model.config.id2label
 
-    print(id2label)
-
     output_file = args.output_file
     total_items = 0
     total_time = 0.0
