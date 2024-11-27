@@ -63,7 +63,7 @@ for i in `seq 0 $((SPLIT_PARTS-1))`; do
         --mem=16G \
         python3 predict.py \
         --model_dir "TurkuNLP/web-register-classification-multilingual" \
-        --base_model "TurkuNLP/web-register-classification-multilingual" \
+        --base_model "xlm-roberta-large" \
         "$SPLIT_DIR/0$i.jsonl" \
         "$PREDICT_DIR/0$i.jsonl" \
         &
