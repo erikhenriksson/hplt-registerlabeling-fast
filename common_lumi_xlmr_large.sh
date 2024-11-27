@@ -4,10 +4,10 @@ BASE_URL="https://data.hplt-project.org/two"
 
 DOWNLOAD_BASE_DIR="downloads"
 STATS_BASE_DIR="stats"
-SPLIT_BASE_DIR="splits"
+SPLIT_BASE_DIR="/scratch/project_462000353/HPLT-REGISTERS/splits"
 LOCK_DIR="locks_xlmr_large"
 LOG_BASE_DIR="logs_xlmr_large"
-PREDICT_BASE_DIR="predictions_xlmr_large"
+PREDICT_BASE_DIR="/scratch/project_462000353/HPLT-REGISTERS/predictions_xlmr_large"
 
 SPLIT_PARTS=8
 
