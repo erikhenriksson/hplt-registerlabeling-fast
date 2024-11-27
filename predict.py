@@ -103,9 +103,10 @@ def main(args):
     model.eval()
 
     # Load id2label mapping from config.json
-    with open(os.path.join(args.model_dir, "config.json"), "r") as f:
-        config = json.load(f)
-    id2label = config["id2label"]
+    # with open(os.path.join(args.model_dir, "config.json"), "r") as f:
+    #    config = json.load(f)
+    # id2label = config["id2label"]
+    id2label = model.config.id2label
 
     output_file = args.output_file
     total_items = 0
