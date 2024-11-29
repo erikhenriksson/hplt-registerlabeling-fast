@@ -52,7 +52,7 @@ def process(textd, labeld, args):
     probabilities = labeld["register_probabilities"]
     labels = assign_labels(probabilities, args.threshold)
 
-    if args.no_hybrids and is_hybrid(labels):
+    if args.exclude_hybrids and is_hybrid(labels):
         return
 
     if labels & args.registers:
@@ -63,11 +63,11 @@ def process(textd, labeld, args):
 
 def argparser():
     ap = ArgumentParser()
-    ap.add_argument("--threshold", type=float, default=0.5)
-    ap.add_argument("--exclude_hybrids", action="store_true")
     ap.add_argument("textfile")
     ap.add_argument("labelfile")
     ap.add_argument("registers", help="R1[,R2...]")
+    ap.add_argument("--threshold", type=float, default=0.5)
+    ap.add_argument("--exclude_hybrids", action="store_true")
     return ap
 
 
