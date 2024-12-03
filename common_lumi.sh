@@ -7,7 +7,7 @@ STATS_BASE_DIR="stats"
 SPLIT_BASE_DIR="/scratch/project_462000353/HPLT-REGISTERS/splits"
 LOCK_DIR="locks"
 LOG_BASE_DIR="logs"
-PREDICT_BASE_DIR="/scratch/project_462000353/HPLT-REGISTERS/predictions"
+PREDICT_BASE_DIR="/scratch/project_462000353/HPLT-REGISTERS/predictions_xlmrl"
 
 SPLIT_PARTS=8
 
