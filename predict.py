@@ -157,13 +157,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_dir",
         type=str,
-        default="models/xlm-roberta-base",
+        default="TurkuNLP/web-register-classification-multilingual",
         help="Path to the model directory.",
     )
     parser.add_argument(
         "--base_model",
         type=str,
-        default="xlm-roberta-base",
+        default="xlm-roberta-large",
         help="Base model.",
     )
     parser.add_argument(
