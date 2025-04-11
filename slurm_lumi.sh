@@ -8,7 +8,7 @@
 #SBATCH --ntasks=8
 #SBATCH --mem=128G
 #SBATCH --cpus-per-task=4
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=slurm-logs/%j.out
 #SBATCH --error=slurm-logs/%j.err
 #SBATCH --account=project_462000353
@@ -58,15 +58,15 @@ mkdir -p "$PREDICT_DIR"
 
 for i in `seq 0 $((SPLIT_PARTS-1))`; do
     srun \
-	--ntasks=1 \
-	--gres=gpu:mi250:1 \
-    --mem=16G \
-	python3 predict.py \
-	"$SPLIT_DIR/0$i.jsonl" \
-	"$PREDICT_DIR/0$i.jsonl" \
-	&
+        --ntasks=1 \
+        --gres=gpu:mi250:1 \
+        --mem=16G \
+        python3 predict.py \
+        "$SPLIT_DIR/0$i.jsonl" \
+        "$PREDICT_DIR/0$i.jsonl" \
+        &
 done
-    
+
 wait
 
 cat <<EOF
